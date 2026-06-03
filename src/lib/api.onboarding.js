@@ -50,7 +50,7 @@ export async function inviteEmployee({ fullName, email, role, roleType, employee
     .single()
   if (empError) throw empError
 
-  await seedLeaveBalances(emp.id, employeeType)
+  await seedLeaveBalances(emp.id, employeeType, form?.gender || 'prefer_not_to_say')
   return emp
 }
 
@@ -88,7 +88,7 @@ export async function createEmployeeWithPassword({ fullName, email, role, roleTy
     .single()
   if (empError) throw empError
 
-  await seedLeaveBalances(emp.id, employeeType)
+  await seedLeaveBalances(emp.id, employeeType, form?.gender || 'prefer_not_to_say')
   return emp
 }
 
@@ -152,7 +152,7 @@ export async function approveEmployee(employeeId, { role, roleType, employeeType
     .single()
   if (error) throw error
 
-  await seedLeaveBalances(employeeId, employeeType)
+  await seedLeaveBalances(employeeId, employeeType, form?.gender || 'prefer_not_to_say')
   return data
 }
 
@@ -204,9 +204,10 @@ function toInitials(fullName) {
   return fullName.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
-async function seedLeaveBalances(employeeId, employeeType) {
+async function seedLeaveBalances(employeeId, employeeType, gender) {
   const year = new Date().getFullYear()
-  const balances = LEAVE_BALANCES_BY_TYPE[employeeType] || LEAVE_BALANCES_BY_TYPE.permanent
+  const allBalances = LEAVE_BALANCES_BY_TYPE[employeeType] || LEAVE_BALANCES_BY_TYPE.permanent
+  const balances = allBalances.filter(b => b.leave_type !== 'maternity' || gender === 'female')
   const rows = balances.map(b => ({ employee_id: employeeId, year, ...b }))
   const { error } = await supabase
     .from('leave_balances')

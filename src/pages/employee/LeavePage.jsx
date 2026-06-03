@@ -1,29 +1,49 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
-import { Card, Button, Badge, Tag, Spinner, Alert, EmptyState, Select, Input, Textarea, SectionTitle } from '../../components/ui'
-import { C, LEAVE_TYPES } from '../../lib/constants'
+import { Card, Badge, Tag, Spinner, Alert, EmptyState, Select, Input, Textarea, SectionTitle } from '../../components/ui'
+import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave } from '../../lib/api'
 
+// Filter leave types based on employee gender
+function getApplicableLeaveTypes(gender) {
+  return LEAVE_TYPES.filter(lt => {
+    if (FEMALE_ONLY_LEAVES.includes(lt.id)) return gender === 'female'
+    return true
+  })
+}
+
 // ── Balance strip ─────────────────────────────────────────────────────────────
-function BalanceStrip({ balances }) {
+function BalanceStrip({ balances, gender }) {
+  const applicable = getApplicableLeaveTypes(gender)
+  const cols = applicable.length <= 4 ? applicable.length : 4
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 28 }}>
-      {LEAVE_TYPES.map(lt => {
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 12, marginBottom: 28 }}>
+      {applicable.map(lt => {
         const b = balances.find(x => x.leave_type === lt.id)
         const remaining = b?.remaining ?? lt.total
-        const total = b?.total_days ?? lt.total
-        const pct = (remaining / total) * 100
+        const total     = b?.total_days ?? lt.total
+        const pct       = total > 0 ? (remaining / total) * 100 : 0
         return (
           <Card key={lt.id} style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 11, color: C.textLight, fontWeight: 600, marginBottom: 8 }}>{lt.label}</div>
+            <div style={{ fontSize: 11, color: C.textLight, fontWeight: 600, marginBottom: 8 }}>
+              {lt.label}
+              {FEMALE_ONLY_LEAVES.includes(lt.id) && (
+                <span style={{ marginLeft: 6, fontSize: 9, background: C.pinkSoft || '#FCE7F3', color: C.pink || '#9D174D', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
+                  ♀
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, marginBottom: 8 }}>
-              <span style={{ fontSize: 28, fontWeight: 800, color: lt.color, lineHeight: 1, fontFamily: "'Sora',sans-serif" }}>{remaining}</span>
+              <span style={{ fontSize: 28, fontWeight: 800, color: lt.color, lineHeight: 1, fontFamily: "'Sora',sans-serif" }}>
+                {remaining}
+              </span>
               <span style={{ fontSize: 12, color: C.textLight, marginBottom: 2 }}>/ {total} days</span>
             </div>
             <div style={{ height: 3, background: C.border, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: lt.color, borderRadius: 4 }} />
             </div>
+            {lt.info && <div style={{ fontSize: 10, color: C.textLight, marginTop: 6 }}>{lt.info}</div>}
           </Card>
         )
       })}
@@ -32,10 +52,11 @@ function BalanceStrip({ balances }) {
 }
 
 // ── Apply form ────────────────────────────────────────────────────────────────
-function ApplyForm({ employeeId, onApplied }) {
-  const [form, setForm]     = useState({ leaveType: 'casual', fromDate: '', toDate: '', reason: '' })
-  const [loading, setLoad]  = useState(false)
-  const [error, setError]   = useState('')
+function ApplyForm({ employeeId, gender, onApplied }) {
+  const applicable = getApplicableLeaveTypes(gender)
+  const [form, setForm]       = useState({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '' })
+  const [loading, setLoad]    = useState(false)
+  const [error, setError]     = useState('')
   const [success, setSuccess] = useState(false)
 
   const days = form.fromDate && form.toDate
@@ -50,13 +71,10 @@ function ApplyForm({ employeeId, onApplied }) {
       const newLeave = await applyLeave({ employeeId, ...form, days })
       onApplied(newLeave)
       setSuccess(true)
-      setForm({ leaveType: 'casual', fromDate: '', toDate: '', reason: '' })
+      setForm({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '' })
       setTimeout(() => setSuccess(false), 3000)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoad(false)
-    }
+    } catch (e) { setError(e.message) }
+    finally { setLoad(false) }
   }
 
   return (
@@ -66,14 +84,14 @@ function ApplyForm({ employeeId, onApplied }) {
       </div>
 
       {success && <div style={{ marginBottom: 16 }}><Alert type="success" message="Leave application submitted! HR will review it shortly." /></div>}
-      {error   && <div style={{ marginBottom: 16 }}><Alert type="error" message={error} /></div>}
+      {error   && <div style={{ marginBottom: 16 }}><Alert type="error"   message={error} /></div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         <Select
           label="Leave Type"
           value={form.leaveType}
           onChange={v => setForm(f => ({ ...f, leaveType: v }))}
-          options={LEAVE_TYPES.map(lt => ({ value: lt.id, label: lt.label }))}
+          options={applicable.map(lt => ({ value: lt.id, label: lt.label }))}
           required
         />
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
@@ -86,24 +104,23 @@ function ApplyForm({ employeeId, onApplied }) {
             {days > 0 ? `${days} working day${days > 1 ? 's' : ''}` : 'Select dates'}
           </div>
         </div>
-
         <Input label="From Date" type="date" value={form.fromDate} onChange={v => setForm(f => ({ ...f, fromDate: v }))} required />
         <Input label="To Date"   type="date" value={form.toDate}   onChange={v => setForm(f => ({ ...f, toDate: v }))}   required />
       </div>
 
       <div style={{ marginBottom: 24 }}>
-        <Textarea
-          label="Reason"
-          value={form.reason}
-          onChange={v => setForm(f => ({ ...f, reason: v }))}
-          placeholder="Brief reason for your leave…"
-          required
-        />
+        <Textarea label="Reason" value={form.reason} onChange={v => setForm(f => ({ ...f, reason: v }))}
+          placeholder="Brief reason for your leave…" required />
       </div>
 
-      <Button onClick={submit} disabled={loading}>
+      <button onClick={submit} disabled={loading} style={{
+        padding: '12px 28px', borderRadius: 8, border: 'none',
+        background: loading ? C.border : C.brand, color: loading ? C.textLight : '#fff',
+        fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+        fontFamily: "'Sora',sans-serif", boxShadow: loading ? 'none' : `0 4px 12px ${C.brand}40`,
+      }}>
         {loading ? 'Submitting…' : 'Submit Application'}
-      </Button>
+      </button>
     </Card>
   )
 }
@@ -111,7 +128,6 @@ function ApplyForm({ employeeId, onApplied }) {
 // ── History table ─────────────────────────────────────────────────────────────
 function HistoryTable({ requests }) {
   if (!requests.length) return <EmptyState icon="🏖️" title="No leave requests yet" subtitle="Your leave history will appear here." />
-
   return (
     <Card padding="0">
       <div style={{ padding: '18px 24px', borderBottom: `1px solid ${C.border}` }}>
@@ -121,7 +137,7 @@ function HistoryTable({ requests }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: C.surfaceAlt }}>
-              {['Type', 'From', 'To', 'Days', 'Reason', 'Applied On', 'Status'].map(h => (
+              {['Type','From','To','Days','Reason','Applied On','Status'].map(h => (
                 <th key={h} style={{
                   padding: '11px 16px', textAlign: 'left',
                   fontSize: 11, fontWeight: 700, color: C.textLight,
@@ -156,10 +172,10 @@ function HistoryTable({ requests }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function LeavePage() {
   const { employee } = useAuth()
-  const [balances,  setBalances]  = useState([])
-  const [requests,  setRequests]  = useState([])
-  const [tab, setTab]             = useState('overview')
-  const [loading, setLoading]     = useState(true)
+  const [balances, setBalances] = useState([])
+  const [requests, setRequests] = useState([])
+  const [tab, setTab]           = useState('overview')
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     if (!employee) return
@@ -176,11 +192,7 @@ export default function LeavePage() {
     </AppShell>
   )
 
-  const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'apply',    label: 'Apply Leave' },
-    { id: 'history',  label: 'History' },
-  ]
+  const gender = employee?.gender || 'prefer_not_to_say'
 
   return (
     <AppShell title="Leave Management" subtitle="Manage your leave requests and balances">
@@ -188,7 +200,7 @@ export default function LeavePage() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 28, background: C.surface, padding: 6, borderRadius: 10, width: 'fit-content', boxShadow: C.shadow }}>
-        {tabs.map(t => (
+        {[{ id: 'overview', label: 'Overview' }, { id: 'apply', label: 'Apply Leave' }, { id: 'history', label: 'History' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 20px', borderRadius: 7, border: 'none',
             background: tab === t.id ? C.brand : 'transparent',
@@ -202,12 +214,12 @@ export default function LeavePage() {
       {(tab === 'overview' || tab === 'apply') && (
         <div style={{ marginBottom: 28 }}>
           <SectionTitle>Your Leave Balances</SectionTitle>
-          <BalanceStrip balances={balances} />
+          <BalanceStrip balances={balances} gender={gender} />
         </div>
       )}
 
       {tab === 'overview' && <HistoryTable requests={requests} />}
-      {tab === 'apply'    && <ApplyForm employeeId={employee.id} onApplied={l => setRequests(r => [l, ...r])} />}
+      {tab === 'apply'    && <ApplyForm employeeId={employee.id} gender={gender} onApplied={l => setRequests(r => [l, ...r])} />}
       {tab === 'history'  && <HistoryTable requests={requests} />}
     </AppShell>
   )

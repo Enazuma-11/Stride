@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, Select, SectionTitle } from '../../components/ui'
-import { C, EMPLOYEE_TYPES, DEPARTMENTS, ROLE_TYPES, REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN } from '../../lib/constants'
+import { C, EMPLOYEE_TYPES, DEPARTMENTS, ROLE_TYPES, REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, GENDERS } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import {
   getAllEmployeesForHR, getPendingRegistrations,
@@ -174,6 +174,7 @@ function EmployeeFormFields({ form, set, showTempPassword = false }) {
           )}
 
           <Input label="Phone (optional)" type="tel" value={form.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
+          <Select label="Gender" value={form.gender || ''} onChange={set('gender')} options={[{value:'',label:'Select…'}, ...GENDERS]} />
 
           {showTempPassword && (
             <div>

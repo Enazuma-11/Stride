@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, SectionTitle, Avatar, Tag, Badge, Spinner, EmptyState } from '../../components/ui'
-import { C, LEAVE_TYPES } from '../../lib/constants'
+import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements } from '../../lib/api'
 import { useNavigate } from 'react-router-dom'
@@ -108,7 +108,7 @@ export default function DashboardPage() {
       {/* Leave balances */}
       <SectionTitle>Leave Balances</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
-        {LEAVE_TYPES.map(lt => (
+        {LEAVE_TYPES.filter(lt => !FEMALE_ONLY_LEAVES.includes(lt.id) || employee?.gender === 'female').map(lt => (
           <BalanceCard key={lt.id} lt={lt} balance={balances.find(b => b.leave_type === lt.id)} />
         ))}
       </div>

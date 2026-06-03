@@ -11,7 +11,7 @@ export default function RegisterPage() {
   const [error,   setError]   = useState('')
   const [form,    setForm]    = useState({
     fullName: '', email: '', password: '', confirmPassword: '',
-    employeeType: '', department: '', role: '', phone: '',
+    employeeType: '', department: '', role: '', phone: '', gender: '',
   })
 
   function set(k) { return v => setForm(f => ({ ...f, [k]: v })) }
