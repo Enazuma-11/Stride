@@ -1,6 +1,7 @@
 -- ============================================================
--- SPORTECH EMPLOYEE PORTAL — SUPABASE SCHEMA
--- Run this entire file in: Supabase Dashboard → SQL Editor
+-- STRIDE EMPLOYEE PORTAL — SUPABASE SCHEMA
+-- SporTech Innovation Lab Pvt Ltd
+-- Run this in: Supabase Dashboard → SQL Editor → New Query
 -- ============================================================
 
 -- Enable UUID extension
@@ -13,16 +14,22 @@ CREATE TABLE employees (
   user_id          UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   full_name        TEXT NOT NULL,
   email            TEXT NOT NULL UNIQUE,
-  role             TEXT NOT NULL,           -- Job title e.g. "Senior Developer"
+  role             TEXT NOT NULL,
   role_type        TEXT NOT NULL DEFAULT 'employee'
                    CHECK (role_type IN ('employee','manager','hr','admin')),
+  employee_type    TEXT NOT NULL DEFAULT 'permanent'
+                   CHECK (employee_type IN ('permanent','intern','contractor','parttime')),
   department       TEXT NOT NULL,
-  avatar_initials  TEXT NOT NULL,           -- e.g. "AM" for Amit Mehta
+  avatar_initials  TEXT NOT NULL,
   manager_id       UUID REFERENCES employees(id) ON DELETE SET NULL,
   phone            TEXT,
   join_date        DATE NOT NULL DEFAULT CURRENT_DATE,
+  internship_end_date DATE,
   status           TEXT NOT NULL DEFAULT 'active'
                    CHECK (status IN ('active','inactive')),
+  onboarding_status TEXT NOT NULL DEFAULT 'active'
+                   CHECK (onboarding_status IN ('invited','active','pending_approval','rejected','offboarded')),
+  must_change_password BOOLEAN DEFAULT FALSE,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -91,21 +98,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================
 -- ROW LEVEL SECURITY (RLS)
--- Employees can only see their own data.
--- HR/Admin can see everything.
 -- ============================================================
 ALTER TABLE employees      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leave_balances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements  ENABLE ROW LEVEL SECURITY;
 
--- Helper function to get current employee's role_type
+-- Helper: get current user's role
 CREATE OR REPLACE FUNCTION current_employee_role()
 RETURNS TEXT AS $$
   SELECT role_type FROM employees WHERE user_id = auth.uid() LIMIT 1;
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
--- EMPLOYEES table policies
+-- EMPLOYEES policies
 CREATE POLICY "employees_select_own" ON employees
   FOR SELECT USING (
     user_id = auth.uid()
@@ -117,6 +122,12 @@ CREATE POLICY "employees_update_own" ON employees
 
 CREATE POLICY "hr_manage_employees" ON employees
   FOR ALL USING (current_employee_role() IN ('hr','admin'));
+
+CREATE POLICY "allow_self_registration" ON employees
+  FOR INSERT WITH CHECK (
+    status = 'inactive'
+    AND onboarding_status = 'pending_approval'
+  );
 
 -- LEAVE BALANCES policies
 CREATE POLICY "lb_select_own" ON leave_balances
@@ -143,48 +154,9 @@ CREATE POLICY "lr_insert_own" ON leave_requests
 CREATE POLICY "hr_manage_requests" ON leave_requests
   FOR UPDATE USING (current_employee_role() IN ('hr','admin'));
 
--- ANNOUNCEMENTS policies (everyone reads, only HR writes)
+-- ANNOUNCEMENTS policies
 CREATE POLICY "announcements_select_all" ON announcements
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "hr_manage_announcements" ON announcements
   FOR ALL USING (current_employee_role() IN ('hr','admin'));
-
-
--- ============================================================
--- SEED DATA — Replace with your real team details
--- Step 1: Create auth users in Supabase Dashboard → Auth → Users
--- Step 2: Copy the UUID from each user and paste below
--- ============================================================
-
--- Insert employees (update user_id UUIDs after creating auth users)
-INSERT INTO employees (full_name, email, role, role_type, department, avatar_initials, join_date) VALUES
-  ('Amit Sharma',   'amit@sportech.in',   'Founder & CEO',        'admin',    'Leadership',  'AS', '2024-01-01'),
-  ('Priya Nair',    'priya@sportech.in',  'HR Manager',           'hr',       'HR',          'PN', '2024-01-15'),
-  ('Rahul Mehta',   'rahul@sportech.in',  'Senior Developer',     'employee', 'Engineering', 'RM', '2024-02-01'),
-  ('Anjali Singh',  'anjali@sportech.in', 'UI/UX Designer',       'employee', 'Design',      'AS', '2024-03-01'),
-  ('Karan Patel',   'karan@sportech.in',  'Junior Developer',     'employee', 'Engineering', 'KP', '2024-04-01');
-
--- Set manager relationships (Rahul and Anjali report to Amit, Karan to Rahul)
-UPDATE employees SET manager_id = (SELECT id FROM employees WHERE email = 'amit@sportech.in')
-  WHERE email IN ('rahul@sportech.in','anjali@sportech.in','priya@sportech.in');
-UPDATE employees SET manager_id = (SELECT id FROM employees WHERE email = 'rahul@sportech.in')
-  WHERE email = 'karan@sportech.in';
-
--- Seed leave balances for current year (2026)
-INSERT INTO leave_balances (employee_id, leave_type, year, total_days)
-SELECT e.id, lt.leave_type, 2026, lt.total
-FROM employees e
-CROSS JOIN (VALUES
-  ('casual', 12), ('sick', 8), ('earned', 15), ('comp', 4)
-) AS lt(leave_type, total)
-WHERE e.status = 'active';
-
--- Sample announcement
-INSERT INTO announcements (title, body, pinned, created_by)
-SELECT
-  'Welcome to SporTech Employee Portal! 🎉',
-  'Our new employee portal is live. You can now apply for leaves, view your balances, and stay updated on company announcements right here.',
-  TRUE,
-  id
-FROM employees WHERE email = 'amit@sportech.in';
