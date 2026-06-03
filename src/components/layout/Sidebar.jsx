@@ -5,18 +5,19 @@ import { useAuth } from '../../context/AuthContext'
 import { signOut } from '../../lib/api'
 
 const NAV_ITEMS = [
-  { icon: '🏠', label: 'Dashboard',        path: '/dashboard' },
-  { icon: '🏖️', label: 'Leave Management', path: '/leaves'    },
-  { icon: '⏰', label: 'Attendance',        path: '/attendance', soon: true },
-  { icon: '💰', label: 'Payslips',          path: '/payslips',   soon: true },
-  { icon: '📁', label: 'Documents',         path: '/documents',  soon: true },
-  { icon: '💸', label: 'Expenses',          path: '/expenses',   soon: true },
-  { icon: '👥', label: 'Team Directory',    path: '/team',       soon: true },
+  { icon: '🏠', label: 'Dashboard',        path: '/dashboard'  },
+  { icon: '🏖️', label: 'Leave Management', path: '/leaves'     },
+  { icon: '⏰', label: 'Attendance',        path: '/attendance' },
+  { icon: '💰', label: 'Payslips',          path: '/payslips',  soon: true },
+  { icon: '📁', label: 'Documents',         path: '/documents', soon: true },
+  { icon: '💸', label: 'Expenses',          path: '/expenses',  soon: true },
+  { icon: '👥', label: 'Team Directory',    path: '/team',      soon: true },
 ]
 
 const HR_ITEMS = [
-  { icon: '🛡️', label: 'HR Dashboard',       path: '/hr'           },
-  { icon: '👤', label: 'Employee Management', path: '/hr/employees' },
+  { icon: '🛡️', label: 'HR Dashboard',       path: '/hr'             },
+  { icon: '👤', label: 'Employee Management', path: '/hr/employees'   },
+  { icon: '⏰', label: 'Attendance Report',   path: '/hr/attendance'  },
   { icon: '📣', label: 'Announcements',       path: '/announcements', soon: true },
 ]
 
@@ -35,7 +36,6 @@ export default function Sidebar() {
       minHeight: '100vh', display: 'flex',
       flexDirection: 'column', flexShrink: 0,
     }}>
-      {/* Logo */}
       <div style={{ padding: '28px 24px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div style={{
@@ -48,7 +48,7 @@ export default function Sidebar() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, marginTop: 10, textTransform: 'uppercase' }}>
-          Employee Portal · v1.0
+          Stride · Employee Portal
         </div>
       </div>
 

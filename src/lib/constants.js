@@ -81,3 +81,21 @@ export const LEAVE_BALANCES_BY_TYPE = {
     { leave_type: 'sick',   total_days: 4 },
   ],
 }
+
+// ─── ATTENDANCE ───────────────────────────────────────────────
+export const WORK_START_HOUR   = 9    // 9:00 AM
+export const WORK_END_HOUR     = 18   // 6:00 PM
+export const FULL_DAY_HOURS    = 8    // hours needed for full day
+export const HALF_DAY_HOURS    = 4    // hours needed for half day
+export const LATE_MARK_MINUTES = 30   // grace period after 9:00 AM
+
+export const ATTENDANCE_STATUSES = [
+  { value: 'present',   label: 'Present',   color: '#2D6A4F', bg: '#EBF5F0', icon: '✅' },
+  { value: 'wfh',       label: 'WFH',       color: '#1D3557', bg: '#EAF0F7', icon: '🏠' },
+  { value: 'half_day',  label: 'Half Day',  color: '#B45309', bg: '#FEF3C7', icon: '🌓' },
+  { value: 'late_mark', label: 'Late Mark', color: '#9A3412', bg: '#FFF7ED', icon: '⏰' },
+  { value: 'leave',     label: 'On Leave',  color: '#6D28D9', bg: '#EDE9FE', icon: '🏖️' },
+  { value: 'holiday',   label: 'Holiday',   color: '#0E7490', bg: '#ECFEFF', icon: '🎉' },
+  { value: 'absent',    label: 'Absent',    color: '#E63946', bg: '#FDF0F1', icon: '❌' },
+  { value: 'weekend',   label: 'Weekend',   color: '#A8A69F', bg: '#F5F4F0', icon: '📅' },
+]
