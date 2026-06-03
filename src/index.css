@@ -1,0 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+button:focus { outline: none; }
+input:focus, select:focus, textarea:focus { outline: 2px solid rgba(29,53,87,0.4); outline-offset: 0; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #E4E2DC; border-radius: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
