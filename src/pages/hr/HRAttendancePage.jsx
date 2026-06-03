@@ -1,3 +1,4 @@
+import AttendanceOverridePanel from '../../components/AttendanceOverridePanel'
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, SectionTitle } from '../../components/ui'
@@ -301,6 +302,7 @@ export default function HRAttendancePage() {
           { id: 'today',    label: "Today's View" },
           { id: 'monthly',  label: 'Monthly Report' },
           { id: 'holidays', label: 'Holidays' },
+          { id: 'override', label: '✏️ Override Times' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 20px', borderRadius: 7, border: 'none',
@@ -329,6 +331,8 @@ export default function HRAttendancePage() {
           <MonthlyReport records={monthRecs} employees={employees} year={year} month={month} />
         </>
       )}
+
+      {tab === 'override' && <AttendanceOverridePanel reviewerId={employee?.id} /> }
 
       {tab === 'holidays' && (
         <HolidaysPanel

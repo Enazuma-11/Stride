@@ -6,6 +6,7 @@ import { signOut } from '../../lib/api'
 
 const NAV_ITEMS = [
   { icon: '🏠', label: 'Dashboard',        path: '/dashboard'  },
+  { icon: '👤', label: 'My Profile',         path: '/profile'     },
   { icon: '🏖️', label: 'Leave Management', path: '/leaves'     },
   { icon: '⏰', label: 'Attendance',        path: '/attendance' },
   { icon: '💰', label: 'Payslips',          path: '/payslips',  soon: true },
