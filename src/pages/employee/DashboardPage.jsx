@@ -5,6 +5,7 @@ import { Card, SectionTitle, Avatar, Tag, Badge, Spinner, EmptyState } from '../
 import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES, ATTENDANCE_STATUSES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getAllEmployees } from '../../lib/api'
+import { useResponsive, cols } from '../../lib/responsive'
 import { getTodayAttendance, getTeamAttendanceByDate, getHolidays, todayISO } from '../../lib/api.attendance'
 import { getAllLeaveRequests } from '../../lib/api'
 
@@ -54,13 +55,14 @@ function AttendBadge({ status }) {
 // ── EMPLOYEE DASHBOARD ────────────────────────────────────────────────────────
 function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays }) {
   const navigate = useNavigate()
+  const r = useResponsive()
   const pending  = requests.filter(r => r.status === 'pending').length
   const upcoming = holidays.filter(h => { const d = daysUntil(h.date); return d >= 0 && d <= 7 })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Top stat row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: r.isMobile ? 10 : 12 }}>
         {[
           { label: 'Employee ID',       val: employee?.employee_code || `SIL-???`, color: C.brand,  bg: C.brandLight },
           { label: 'Department',        val: employee?.department,                 color: C.teal,   bg: C.tealSoft   },
@@ -81,14 +83,14 @@ function EmployeeDashboard({ employee, balances, requests, announcements, todayA
           <SectionTitle>Leave Balances</SectionTitle>
           <button onClick={() => navigate('/leaves')} style={{ fontSize: 11, color: C.brand, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Manage →</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:3, desktop:5}), gap: 10 }}>
           {LEAVE_TYPES.filter(lt => !FEMALE_ONLY_LEAVES.includes(lt.id) || employee?.gender === 'female').map(lt => (
             <BalanceCard key={lt.id} lt={lt} balance={balances.find(b => b.leave_type === lt.id)} />
           ))}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 320px', gap: 20 }}>
         {/* Recent leave requests */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -164,6 +166,7 @@ function EmployeeDashboard({ employee, balances, requests, announcements, todayA
 // ── ADMIN/HR DASHBOARD ────────────────────────────────────────────────────────
 function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announcements, holidays, balances, myRequests }) {
   const navigate  = useNavigate()
+  const r = useResponsive()
   const today     = new Date()
   const activeEmp = employees.filter(e => e.status === 'active')
 
@@ -210,7 +213,7 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
       {/* ── Row 1: Headcount stats ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:3, desktop:5}), gap: r.isMobile ? 10 : 12 }}>
         {[
           { label: 'Total Headcount', val: activeEmp.length,                      color: C.brand,  bg: C.brandLight },
           { label: 'Present Today',   val: present,                               color: C.green,  bg: C.greenSoft  },
@@ -226,7 +229,7 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
       </div>
 
       {/* ── Row 2: Today's team attendance ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 20 }}>
         {/* Today's attendance list */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -299,7 +302,7 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
       </div>
 
       {/* ── Row 3: Team breakdown, birthdays, holidays ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:1, tablet:2, desktop:3}), gap: 20 }}>
 
         {/* Department breakdown */}
         <div>
@@ -400,7 +403,7 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
       </div>
 
       {/* ── Row 4: Announcements + my own leave summary ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 20 }}>
         <div>
           <SectionTitle>Announcements</SectionTitle>
           {announcements.length === 0

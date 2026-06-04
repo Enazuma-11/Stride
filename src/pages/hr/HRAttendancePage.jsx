@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, SectionTitle } from '../../components/ui'
 import { C, ATTENDANCE_STATUSES } from '../../lib/constants'
+import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
   getTeamAttendanceByDate, getTeamMonthlyAttendance,
@@ -249,6 +250,7 @@ function HolidaysPanel({ holidays, year, onAdd, onDelete }) {
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function HRAttendancePage() {
   const { employee } = useAuth()
+  const r = useResponsive()
   const now = new Date()
   const [year,      setYear]     = useState(now.getFullYear())
   const [month,     setMonth]    = useState(now.getMonth() + 1)

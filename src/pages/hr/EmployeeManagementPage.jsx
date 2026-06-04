@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, Select, SectionTitle } from '../../components/ui'
 import { C, EMPLOYEE_TYPES, DEPARTMENTS, ROLE_TYPES, REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, GENDERS } from '../../lib/constants'
+import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { notifyWelcome } from '../../lib/api.notifications'
 import {
@@ -504,6 +505,7 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function EmployeeManagementPage() {
+  const r = useResponsive()
   const [employees, setEmployees] = useState([])
   const [pending,   setPending]   = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -587,7 +589,7 @@ export default function EmployeeManagementPage() {
       )}
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:3, desktop:5}), gap: 10, marginBottom: 24 }}>
         {[
           { label: 'Active',           val: employees.filter(e => e.status === 'active').length,                          color: C.green,   bg: C.greenSoft  },
           { label: 'Permanent',        val: employees.filter(e => e.employee_type === 'permanent' && e.status === 'active').length, color: C.brand,  bg: C.brandLight },

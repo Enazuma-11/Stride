@@ -2,9 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <!-- PWA / Mobile app meta -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Stride" />
+    <meta name="theme-color" content="#1D3557" />
+
+    <!-- Prevent tap highlight on mobile -->
+    <style>
+      * { -webkit-tap-highlight-color: transparent; }
+      body { overscroll-behavior: none; }
+    </style>
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sportech-portal</title>
+    <title>Stride · SporTech Innovation Lab</title>
   </head>
   <body>
     <div id="root"></div>

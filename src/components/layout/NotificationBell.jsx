@@ -15,7 +15,7 @@ function timeAgo(isoString) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-export default function NotificationBell() {
+export default function NotificationBell({ mobile = false }) {
   const { employee } = useAuth()
   const [open,         setOpen]         = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -95,12 +95,12 @@ export default function NotificationBell() {
       {/* Bell button */}
       <button onClick={handleOpen} style={{
         position: 'relative',
-        width: 40, height: 40, borderRadius: 10,
-        background: open ? C.brandLight : 'transparent',
-        border: open ? `1.5px solid ${C.brand}30` : `1.5px solid ${C.border}`,
+        width: mobile ? 36 : 40, height: mobile ? 36 : 40, borderRadius: 10,
+        background: mobile ? 'rgba(255,255,255,0.15)' : (open ? C.brandLight : 'transparent'),
+        border: mobile ? '1.5px solid rgba(255,255,255,0.2)' : (open ? `1.5px solid ${C.brand}30` : `1.5px solid ${C.border}`),
         cursor: 'pointer', display: 'flex',
         alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, transition: 'all 0.15s',
+        fontSize: 16, transition: 'all 0.15s',
       }}>
         🔔
         {unreadCount > 0 && (
@@ -121,8 +121,13 @@ export default function NotificationBell() {
       {/* Notification drawer */}
       {open && (
         <div style={{
-          position: 'absolute', top: 48, right: 0,
-          width: 380, maxHeight: 520,
+          position: 'fixed',
+          top: mobile ? 56 : 'auto',
+          bottom: mobile ? 64 : 'auto',
+          left: mobile ? 0 : 'auto',
+          right: mobile ? 0 : 0,
+          width: mobile ? '100vw' : 380,
+          maxHeight: mobile ? 'calc(100vh - 120px)' : 520,
           background: C.surface,
           border: `1px solid ${C.border}`,
           borderRadius: 14,

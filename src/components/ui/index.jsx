@@ -227,3 +227,69 @@ export function Alert({ type = 'error', message }) {
     </div>
   )
 }
+
+// ── Mobile-friendly table → cards on small screens ────────────────────────────
+import { useResponsive } from '../../lib/responsive'
+
+export function ResponsiveTable({ columns, rows, keyField = 'id' }) {
+  const r = useResponsive()
+
+  if (r.isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map(row => (
+          <div key={row[keyField]} style={{
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 10, padding: '14px 16px',
+            boxShadow: C.shadow,
+          }}>
+            {columns.filter(c => !c.mobileHide).map(col => (
+              <div key={col.key} style={{
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', padding: '5px 0',
+                borderBottom: `1px solid ${C.border}`,
+              }}>
+                <span style={{ fontSize: 11, color: C.textLight, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {col.label}
+                </span>
+                <span style={{ fontSize: 13, color: C.text, textAlign: 'right' }}>
+                  {col.render ? col.render(row) : row[col.key]}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: C.surfaceAlt }}>
+            {columns.map(col => (
+              <th key={col.key} style={{
+                padding: '11px 16px', textAlign: 'left',
+                fontSize: 11, fontWeight: 700, color: C.textLight,
+                letterSpacing: 0.5, textTransform: 'uppercase',
+                borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap',
+              }}>{col.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row[keyField]} style={{ background: i % 2 === 0 ? C.surface : C.surfaceAlt }}>
+              {columns.map(col => (
+                <td key={col.key} style={{ padding: '12px 16px' }}>
+                  {col.render ? col.render(row) : row[col.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

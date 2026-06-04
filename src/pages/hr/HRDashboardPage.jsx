@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Badge, Tag, Spinner, EmptyState, SectionTitle } from '../../components/ui'
 import { C, LEAVE_TYPES } from '../../lib/constants'
+import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getAllLeaveRequests, updateLeaveStatus } from '../../lib/api'
 
@@ -14,7 +15,7 @@ function StatCards({ requests }) {
     { label: 'Total Requests',      val: requests.length,                                      color: C.brand,  bg: C.brandLight },
   ]
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 28 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:2, desktop:4}), gap: 12, marginBottom: 28 }}>
       {stats.map(s => (
         <Card key={s.label} style={{ padding: '20px 24px', borderLeft: `4px solid ${s.color}` }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: s.color, fontFamily: "'Sora',sans-serif" }}>{s.val}</div>
@@ -148,6 +149,7 @@ function AllRequestsTable({ requests, onAction }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function HRDashboardPage() {
   const { employee } = useAuth()
+  const r = useResponsive()
   const [requests, setRequests] = useState([])
   const [loading,  setLoading]  = useState(true)
   const [tab, setTab]           = useState('pending')

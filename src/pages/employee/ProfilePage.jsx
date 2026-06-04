@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, Alert, Input, Select, Textarea, SectionTitle } from '../../components/ui'
 import { C, GENDERS, DEPARTMENTS, EMPLOYEE_TYPES } from '../../lib/constants'
+import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
   getFullProfile, updateEmployeeBasic, submitChangeRequest,
@@ -158,16 +159,16 @@ function PersonalSection({ employee, isHR, onUpdate }) {
       onSave={() => onUpdate('basic', form)}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12 }}>
             <Input label="First Name"  value={form.first_name}  onChange={set('first_name')}  placeholder="Amit"    />
             <Input label="Middle Name" value={form.middle_name} onChange={set('middle_name')} placeholder="Kumar"   />
             <Input label="Last Name"   value={form.last_name}   onChange={set('last_name')}   placeholder="Chobitkar" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Preferred / Nick Name" value={form.preferred_name} onChange={set('preferred_name')} placeholder="Amit" />
             <Input label="Display Name"          value={form.display_name}   onChange={set('display_name')}   placeholder="Amit Chobitkar" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12 }}>
             <Input label="Date of Birth" type="date" value={form.date_of_birth} onChange={set('date_of_birth')} />
             <Select label="Gender"         value={form.gender}         onChange={set('gender')}         options={[{ value: '', label: 'Select…' }, ...GENDERS]} />
             <Select label="Marital Status" value={form.marital_status} onChange={set('marital_status')} options={MARITAL_OPTIONS} />
@@ -216,20 +217,20 @@ function WorkSection({ employee, isHR, onUpdate }) {
       onSave={() => onUpdate('work', form)}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Job Title / Designation" value={form.role}       onChange={set('role')}       placeholder="Senior Developer" />
             <Select label="Department"             value={form.department} onChange={set('department')} options={DEPARTMENTS.map(d => ({ value: d, label: d }))} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Division"       value={form.division}      onChange={set('division')}      placeholder="Engineering Division" />
             <Input label="Work Location"  value={form.work_location} onChange={set('work_location')} placeholder="Mumbai HQ / Remote" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12 }}>
             <Select label="Employment Type"   value={form.employee_type}      onChange={set('employee_type')}      options={EMPLOYEE_TYPES.map(t => ({ value: t.value, label: t.label }))} />
             <Select label="Employment Status" value={form.employment_status}  onChange={set('employment_status')}  options={[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'},{value:'on_leave',label:'On Leave'},{value:'onboarding',label:'Onboarding'}]} />
             <Select label="Source of Hire"    value={form.source_of_hire}     onChange={set('source_of_hire')}     options={SOURCE_OPTIONS} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Date of Joining"    type="date" value={form.join_date}          onChange={set('join_date')} />
             <Input label="Probation End Date" type="date" value={form.probation_end_date} onChange={set('probation_end_date')} />
           </div>
@@ -291,18 +292,18 @@ function ContactSection({ employee, isHR, onUpdate }) {
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, letterSpacing: 1, textTransform: 'uppercase' }}>Corporate</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12 }}>
             <Input label="Work Phone"    value={form.work_phone}      onChange={set('work_phone')}      placeholder="+91 22 1234 5678" />
             <Input label="Extension"     value={form.work_extension}  onChange={set('work_extension')}  placeholder="101" />
             <Input label="Desk ID"       value={form.desk_id}         onChange={set('desk_id')}         placeholder="A-203" />
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>Personal</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Personal Mobile" type="tel"   value={form.personal_mobile} onChange={set('personal_mobile')} placeholder="+91 98765 43210" />
             <Input label="Personal Email"  type="email" value={form.personal_email}  onChange={set('personal_email')}  placeholder="you@gmail.com" />
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>Present Address</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Street"  value={form.present_street}  onChange={set('present_street')}  placeholder="123 MG Road" />
             <Input label="City"    value={form.present_city}    onChange={set('present_city')}    placeholder="Mumbai" />
             <Input label="State"   value={form.present_state}   onChange={set('present_state')}   placeholder="Maharashtra" />
@@ -310,7 +311,7 @@ function ContactSection({ employee, isHR, onUpdate }) {
             <Input label="ZIP"     value={form.present_zip}     onChange={set('present_zip')}     placeholder="400001" />
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4 }}>Permanent Address</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Street"  value={form.permanent_street}  onChange={set('permanent_street')}  placeholder="123 MG Road" />
             <Input label="City"    value={form.permanent_city}    onChange={set('permanent_city')}    placeholder="Pune" />
             <Input label="State"   value={form.permanent_state}   onChange={set('permanent_state')}   placeholder="Maharashtra" />
@@ -356,7 +357,7 @@ function PayrollSection({ payroll, isHR, employeeId, onUpdate }) {
       onSave={() => onUpdate('payroll', form)}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12 }}>
             <Input label="Base Salary (₹)" type="number" value={form.base_salary} onChange={set('base_salary')} placeholder="50000" />
             <Select label="Pay Type"      value={form.pay_type}      onChange={set('pay_type')}      options={[{value:'salary',label:'Salary'},{value:'hourly',label:'Hourly'},{value:'contract',label:'Contract'}]} />
             <Select label="Pay Frequency" value={form.pay_frequency} onChange={set('pay_frequency')} options={[{value:'monthly',label:'Monthly'},{value:'bi_weekly',label:'Bi-weekly'},{value:'weekly',label:'Weekly'}]} />
@@ -367,7 +368,7 @@ function PayrollSection({ payroll, isHR, employeeId, onUpdate }) {
           </div>
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 12 }}>Bank Details</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Input label="Bank Name"           value={form.bank_name}           onChange={set('bank_name')}           placeholder="HDFC Bank" />
               <Input label="Account Holder Name" value={form.account_holder_name} onChange={set('account_holder_name')} placeholder="Amit Chobitkar" />
               <Input label="Account Number"      value={form.account_number}      onChange={set('account_number')}      placeholder="1234567890" />
@@ -426,7 +427,7 @@ function ComplianceSection({ compliance, education, documents, isHR, employeeId,
       onSave={() => onUpdate('compliance', form)}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Aadhaar Number" value={form.aadhaar_number} onChange={set('aadhaar_number')} placeholder="1234 5678 9012" />
             <Input label="PAN Number"     value={form.pan_number}     onChange={set('pan_number')}     placeholder="ABCDE1234F" />
           </div>
@@ -468,7 +469,7 @@ function ComplianceSection({ compliance, education, documents, isHR, employeeId,
         </div>
         {addingEdu && (
           <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: '14px', marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
               <Input label="Institution" value={eduForm.institution} onChange={v => setEduForm(f => ({ ...f, institution: v }))} placeholder="IIT Bombay" />
               <Input label="Degree"      value={eduForm.degree}      onChange={v => setEduForm(f => ({ ...f, degree: v }))}      placeholder="B.Tech" />
               <Input label="Major"       value={eduForm.major}       onChange={v => setEduForm(f => ({ ...f, major: v }))}       placeholder="Computer Science" />
@@ -546,7 +547,7 @@ function EmergencySection({ emergency, dependents, isHR, employeeId, onSaveConta
       </div>
       {adding && (
         <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: '14px', marginBottom: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             <Input label="Full Name"     value={contactForm.full_name}    onChange={v => setContactForm(f => ({ ...f, full_name: v }))}    placeholder="Priya Chobitkar" />
             <Input label="Relationship"  value={contactForm.relationship} onChange={v => setContactForm(f => ({ ...f, relationship: v }))} placeholder="Spouse" />
             <Input label="Phone"         value={contactForm.phone}        onChange={v => setContactForm(f => ({ ...f, phone: v }))}        placeholder="+91 98765 43210" />
@@ -577,7 +578,7 @@ function EmergencySection({ emergency, dependents, isHR, employeeId, onSaveConta
       </div>
       {addingDep && (
         <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: '14px', marginBottom: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             <Input label="Full Name"          value={depForm.full_name}           onChange={v => setDepForm(f => ({ ...f, full_name: v }))}           placeholder="Arjun Chobitkar" />
             <Input label="Relationship"       value={depForm.relationship}        onChange={v => setDepForm(f => ({ ...f, relationship: v }))}        placeholder="Son" />
             <Select label="Gender"            value={depForm.gender}              onChange={v => setDepForm(f => ({ ...f, gender: v }))}              options={[{value:'',label:'Select…'},...GENDERS]} />
@@ -714,7 +715,7 @@ function ExitSection({ exit, isHR, employeeId, onUpdate }) {
       onSave={() => onUpdate('exit', form)}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Input label="Last Working Day" type="date" value={form.last_working_day} onChange={set('last_working_day')} />
             <Select label="Reason for Leaving" value={form.reason_for_leaving} onChange={set('reason_for_leaving')}
               options={[
@@ -766,12 +767,13 @@ function ExitSection({ exit, isHR, employeeId, onUpdate }) {
 
 // ── PROFILE PHOTO ─────────────────────────────────────────────────────────────
 function ProfileHeader({ employee, isHR, onPhotoUpload }) {
+  const r = useResponsive()
   const [uploading, setUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
 
   return (
     <Card style={{ padding: '24px 28px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      <div style={{ display: 'flex', alignItems: r.isMobile ? 'flex-start' : 'center', gap: 16, flexWrap: r.isMobile ? 'wrap' : 'nowrap' }}>
         {/* Photo */}
         <div style={{ position: 'relative' }}>
           {employee.profile_photo_url
@@ -830,6 +832,7 @@ function ProfileHeader({ employee, isHR, onPhotoUpload }) {
 
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
+  const r = useResponsive()
   const { employee: me, isHR, refetchEmployee } = useAuth()
   const [profile,  setProfile]  = useState(null)
   const [loading,  setLoading]  = useState(true)
@@ -900,7 +903,7 @@ export default function ProfilePage() {
       <ProfileHeader employee={employee} isHR={isHR} onPhotoUpload={handlePhotoUpload} />
 
       {/* Section tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, flexWrap: 'wrap', background: C.surface, padding: 6, borderRadius: 10, boxShadow: C.shadow }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: C.surface, padding: 6, borderRadius: 10, boxShadow: C.shadow, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {SECTION_TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '7px 14px', borderRadius: 7, border: 'none',

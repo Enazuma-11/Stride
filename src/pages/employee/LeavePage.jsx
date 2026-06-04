@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Badge, Tag, Spinner, Alert, EmptyState, Select, Input, Textarea, SectionTitle } from '../../components/ui'
 import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES } from '../../lib/constants'
+import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave } from '../../lib/api'
 
@@ -16,9 +17,10 @@ function getApplicableLeaveTypes(gender) {
 // ── Balance strip ─────────────────────────────────────────────────────────────
 function BalanceStrip({ balances, gender }) {
   const applicable = getApplicableLeaveTypes(gender)
-  const cols = applicable.length <= 4 ? applicable.length : 4
+  const r = useResponsive()
+  const colCount = applicable.length <= 4 ? applicable.length : 4
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 12, marginBottom: 28 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr 1fr' : `repeat(${colCount},1fr)`, gap: r.isMobile ? 10 : 12, marginBottom: 28 }}>
       {applicable.map(lt => {
         const b = balances.find(x => x.leave_type === lt.id)
         const remaining = b?.remaining ?? lt.total
@@ -53,6 +55,7 @@ function BalanceStrip({ balances, gender }) {
 
 // ── Apply form ────────────────────────────────────────────────────────────────
 function ApplyForm({ employeeId, gender, onApplied }) {
+  const r = useResponsive()
   const applicable = getApplicableLeaveTypes(gender)
   const [form, setForm]       = useState({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '' })
   const [loading, setLoad]    = useState(false)
@@ -86,7 +89,7 @@ function ApplyForm({ employeeId, gender, onApplied }) {
       {success && <div style={{ marginBottom: 16 }}><Alert type="success" message="Leave application submitted! HR will review it shortly." /></div>}
       {error   && <div style={{ marginBottom: 16 }}><Alert type="error"   message={error} /></div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 20 }}>
         <Select
           label="Leave Type"
           value={form.leaveType}

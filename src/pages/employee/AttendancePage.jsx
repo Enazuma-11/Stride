@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Spinner, EmptyState, SectionTitle, Alert } from '../../components/ui'
 import { C, ATTENDANCE_STATUSES } from '../../lib/constants'
+import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
   checkIn, checkOut, getTodayAttendance,
@@ -47,6 +48,7 @@ function LiveClock() {
 
 // ─── CHECK IN/OUT PANEL ───────────────────────────────────────────────────────
 function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
+  const r = useResponsive()
   const [isWFH, setIsWFH] = useState(false)
 
   const hasCheckedIn  = !!today?.check_in
@@ -56,7 +58,7 @@ function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
     : null
 
   return (
-    <Card style={{ padding: '32px', textAlign: 'center' }}>
+    <Card style={{ padding: r.isMobile ? '24px 16px' : '32px', textAlign: 'center' }}>
       <LiveClock />
 
       <div style={{ margin: '28px 0 20px', display: 'flex', justifyContent: 'center', gap: 12 }}>
@@ -162,6 +164,7 @@ function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
 
 // ─── MONTHLY SUMMARY CARDS ────────────────────────────────────────────────────
 function MonthlySummary({ records, holidays }) {
+  const r = useResponsive()
   const holidayDates = new Set(holidays.map(h => h.date))
 
   const counts = records.reduce((acc, r) => {
@@ -181,7 +184,7 @@ function MonthlySummary({ records, holidays }) {
   ]
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? 'repeat(3,1fr)' : 'repeat(6,1fr)', gap: 10 }}>
       {stats.map(s => (
         <Card key={s.label} style={{ padding: '14px 16px', borderLeft: `3px solid ${s.color}` }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: s.color, fontFamily: "'Sora',sans-serif" }}>{s.val}</div>
@@ -317,6 +320,7 @@ function AttendanceTable({ records }) {
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function AttendancePage() {
   const { employee } = useAuth()
+  const r = useResponsive()
   const now = new Date()
   const [year,      setYear]      = useState(now.getFullYear())
   const [month,     setMonth]     = useState(now.getMonth() + 1)
@@ -395,7 +399,7 @@ export default function AttendancePage() {
       </div>
 
       {tab === 'today' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 340px', gap: 20 }}>
           <CheckInPanel today={today} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} loading={actionLoad} />
 
           {/* Today's info sidebar */}
