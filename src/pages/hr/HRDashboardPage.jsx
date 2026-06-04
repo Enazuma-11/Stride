@@ -160,8 +160,23 @@ export default function HRDashboardPage() {
 
   async function handleAction(leaveId, status) {
     try {
-      await updateLeaveStatus(leaveId, status, employee.id)
+      const updated = await updateLeaveStatus(leaveId, status, employee.id)
       setRequests(rs => rs.map(r => r.id === leaveId ? { ...r, status } : r))
+      // Send in-app notification
+      await notifyLeaveDecision(updated, updated.employee_id, status)
+      // Send email notification
+      const emp = requests.find(r => r.id === leaveId)?.employee
+      if (emp?.email) {
+        sendLeaveDecisionEmail({
+          toEmail:   emp.email,
+          toName:    emp.full_name,
+          status,
+          leaveType: updated.leave_type?.replace('_', '/'),
+          fromDate:  updated.from_date,
+          toDate:    updated.to_date,
+          days:      updated.days,
+        }).catch(() => {})
+      }
     } catch (e) {
       alert('Error: ' + e.message)
     }

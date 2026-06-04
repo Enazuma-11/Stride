@@ -3,6 +3,7 @@ import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, Select, SectionTitle } from '../../components/ui'
 import { C, EMPLOYEE_TYPES, DEPARTMENTS, ROLE_TYPES, REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, GENDERS } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
+import { notifyWelcome } from '../../lib/api.notifications'
 import {
   getAllEmployeesForHR, getPendingRegistrations,
   inviteEmployee, createEmployeeWithPassword,
@@ -526,6 +527,8 @@ export default function EmployeeManagementPage() {
     setEmployees(es => [{ ...emp, onboarding_status: status }, ...es])
     setModal(null)
     showToast(`✅ ${emp.full_name} added successfully!`)
+    // Send welcome notification
+    if (emp.id) notifyWelcome(emp.id, emp.full_name).catch(() => {})
   }
 
   async function handleReject(empId) {
@@ -545,6 +548,8 @@ export default function EmployeeManagementPage() {
     setEmployees(es => es.map(e => e.id === updated.id ? updated : e))
     setModal(null); setToApprove(null)
     showToast(`✅ ${updated.full_name} is now active!`)
+    // Send welcome notification
+    if (updated.id) notifyWelcome(updated.id, updated.full_name).catch(() => {})
   }
 
   async function handleResendInvite(email) {

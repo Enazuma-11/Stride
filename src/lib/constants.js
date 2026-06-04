@@ -147,3 +147,15 @@ export const GENDERS = [
 
 // Leave types that are gender-restricted
 export const FEMALE_ONLY_LEAVES = ['maternity']
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────
+export const NOTIFICATION_TYPES = {
+  birthday_today:     { icon: '🎂', label: 'Birthday',          color: '#DB2777' },
+  birthday_tomorrow:  { icon: '🎁', label: 'Birthday Tomorrow',  color: '#DB2777' },
+  holiday_upcoming:   { icon: '🎉', label: 'Upcoming Holiday',   color: '#0E7490' },
+  leave_approved:     { icon: '✅', label: 'Leave Approved',     color: '#2D6A4F' },
+  leave_rejected:     { icon: '❌', label: 'Leave Rejected',     color: '#E63946' },
+  announcement:       { icon: '📣', label: 'Announcement',       color: '#1D3557' },
+  attendance_missing: { icon: '⏰', label: 'Attendance Alert',   color: '#B45309' },
+  onboarding:         { icon: '👋', label: 'Welcome',            color: '#6D28D9' },
+}

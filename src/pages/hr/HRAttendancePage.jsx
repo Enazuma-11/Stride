@@ -248,6 +248,7 @@ function HolidaysPanel({ holidays, year, onAdd, onDelete }) {
 
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function HRAttendancePage() {
+  const { employee } = useAuth()
   const now = new Date()
   const [year,      setYear]     = useState(now.getFullYear())
   const [month,     setMonth]    = useState(now.getMonth() + 1)

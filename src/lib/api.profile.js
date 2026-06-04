@@ -251,14 +251,40 @@ export async function deleteDocument(id, fileUrl) {
 
 // ─── PROFILE PHOTO UPLOAD ─────────────────────────────────────────────────────
 export async function uploadProfilePhoto(employeeId, file) {
-  const ext  = file.name.split('.').pop()
-  const path = `${employeeId}/profile/photo.${ext}`
-  const { error: upErr } = await supabase.storage.from('employee-documents').upload(path, file, { upsert: true })
-  if (upErr) throw upErr
+  // Validate file type and size
+  if (!file.type.startsWith('image/')) throw new Error('Please upload an image file (JPG, PNG, etc.)')
+  if (file.size > 5 * 1024 * 1024)    throw new Error('Image must be under 5MB')
 
-  const { data: { publicUrl } } = supabase.storage.from('employee-documents').getPublicUrl(path)
-  await supabase.from('employees').update({ profile_photo_url: publicUrl }).eq('id', employeeId)
-  return publicUrl
+  const ext  = file.name.split('.').pop().toLowerCase()
+  const path = `${employeeId}/profile/photo.${ext}`
+
+  const { error: upErr } = await supabase.storage
+    .from('employee-documents')
+    .upload(path, file, { upsert: true, contentType: file.type })
+
+  if (upErr) {
+    if (upErr.message?.includes('Bucket not found') || upErr.message?.includes('bucket')) {
+      throw new Error('Storage not set up yet. Please create the "employee-documents" bucket in Supabase → Storage.')
+    }
+    throw upErr
+  }
+
+  // Use signed URL (works for private buckets)
+  const { data: signedData, error: signErr } = await supabase.storage
+    .from('employee-documents')
+    .createSignedUrl(path, 60 * 60 * 24 * 365) // 1 year expiry
+
+  if (signErr) throw signErr
+
+  const photoUrl = signedData.signedUrl
+
+  const { error: updateErr } = await supabase
+    .from('employees')
+    .update({ profile_photo_url: photoUrl })
+    .eq('id', employeeId)
+  if (updateErr) throw updateErr
+
+  return photoUrl
 }
 
 // ─── ATTENDANCE OVERRIDE (HR only) ────────────────────────────────────────────

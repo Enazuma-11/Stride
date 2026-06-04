@@ -767,6 +767,7 @@ function ExitSection({ exit, isHR, employeeId, onUpdate }) {
 // ── PROFILE PHOTO ─────────────────────────────────────────────────────────────
 function ProfileHeader({ employee, isHR, onPhotoUpload }) {
   const [uploading, setUploading] = useState(false)
+  const [photoError, setPhotoError] = useState('')
 
   return (
     <Card style={{ padding: '24px 28px', marginBottom: 20 }}>
@@ -788,11 +789,19 @@ function ProfileHeader({ employee, isHR, onPhotoUpload }) {
             <input type="file" accept="image/*" hidden onChange={async (e) => {
               if (!e.target.files[0]) return
               setUploading(true)
-              try { await onPhotoUpload(e.target.files[0]) }
+              try { setPhotoError(''); await onPhotoUpload(e.target.files[0]) }
+              catch (err) { setPhotoError(err.message) }
               finally { setUploading(false) }
             }} />
           </label>
         </div>
+
+        {/* Photo error */}
+        {photoError && (
+          <div style={{ position: 'absolute', top: 84, left: 0, fontSize: 10, color: C.accent, width: 80, textAlign: 'center', lineHeight: 1.3 }}>
+            {photoError}
+          </div>
+        )}
 
         {/* Info */}
         <div style={{ flex: 1 }}>
