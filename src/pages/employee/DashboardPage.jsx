@@ -5,6 +5,7 @@ import { Card, SectionTitle, Avatar, Tag, Badge, Spinner, EmptyState } from '../
 import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES, ATTENDANCE_STATUSES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getAllEmployees } from '../../lib/api'
+import OnboardingWizard from '../../components/OnboardingWizard'
 import { useResponsive, cols } from '../../lib/responsive'
 import { getTodayAttendance, getTeamAttendanceByDate, getHolidays, todayISO } from '../../lib/api.attendance'
 import { getAllLeaveRequests } from '../../lib/api'
@@ -53,7 +54,7 @@ function AttendBadge({ status }) {
 }
 
 // ── EMPLOYEE DASHBOARD ────────────────────────────────────────────────────────
-function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays }) {
+function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays, setShowWizard }) {
   const navigate = useNavigate()
   const r = useResponsive()
   const pending  = requests.filter(r => r.status === 'pending').length
@@ -446,6 +447,7 @@ export default function DashboardPage() {
   const [allLeaves,      setAllLeaves]      = useState([])
   const [holidays,       setHolidays]       = useState([])
   const [loading,        setLoading]        = useState(true)
+  const [showWizard,     setShowWizard]     = useState(false)
 
   useEffect(() => {
     if (!employee) return
@@ -469,6 +471,11 @@ export default function DashboardPage() {
       Promise.resolve([]),
     ]
 
+    // Show onboarding wizard for new employees
+    if (!employee.onboarding_completed) {
+      setTimeout(() => setShowWizard(true), 800)
+    }
+
     Promise.all([...baseLoads, ...adminLoads])
       .then(([b, r, a, att, hols, emps, teamAtt, leaves]) => {
         setBalances(b); setMyRequests(r); setAnnouncements(a)
@@ -487,6 +494,11 @@ export default function DashboardPage() {
   return (
     <AppShell title={`Good ${getTimeOfDay()}, ${employee?.full_name?.split(' ')[0]} 👋`}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap'); @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Onboarding wizard */}
+      {showWizard && (
+        <OnboardingWizard onComplete={() => setShowWizard(false)} />
+      )}
+
       {isHR
         ? <AdminDashboard
             employee={employee}
@@ -505,6 +517,7 @@ export default function DashboardPage() {
             announcements={announcements}
             todayAtt={todayAtt}
             holidays={holidays}
+            setShowWizard={setShowWizard}
           />
       }
     </AppShell>
