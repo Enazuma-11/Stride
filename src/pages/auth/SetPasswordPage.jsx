@@ -68,11 +68,13 @@ export default function SetPasswordPage() {
 
       <div style={{ width: '100%', maxWidth: 420 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 13, background: C.accent,
-            margin: '0 auto 14px', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: 26,
-          }}>⚡</div>
+          <img src="/logo.png" alt="SporTech" style={{
+            width: 72, height: 72, borderRadius: 14,
+            background: '#fff', padding: 5,
+            margin: '0 auto 14px', display: 'block',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            objectFit: 'contain',
+          }} />
           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif" }}>
             SporTech Innovation Lab
           </div>

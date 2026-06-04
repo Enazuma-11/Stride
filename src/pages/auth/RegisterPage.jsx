@@ -72,11 +72,13 @@ export default function RegisterPage() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12, background: C.accent,
-            margin: '0 auto 12px', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: 24, boxShadow: `0 8px 24px ${C.accent}60`,
-          }}>⚡</div>
+          <img src="/logo.png" alt="SporTech" style={{
+            width: 64, height: 64, borderRadius: 12,
+            background: '#fff', padding: 4,
+            margin: '0 auto 12px', display: 'block',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            objectFit: 'contain',
+          }} />
           <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif" }}>
             SporTech Innovation Lab
           </div>

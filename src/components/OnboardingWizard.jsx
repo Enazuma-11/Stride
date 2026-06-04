@@ -59,7 +59,7 @@ function ProgressBar({ current, total }) {
 function StepWelcome({ employee }) {
   return (
     <div style={{ textAlign: 'center', padding: '20px 0' }}>
-      <div style={{ fontSize: 64, marginBottom: 16 }}>⚡</div>
+      <img src="/logo.png" alt="SporTech" style={{ width: 80, height: 80, borderRadius: 16, background: '#f5f5f5', padding: 6, marginBottom: 16, objectFit: 'contain', display: 'block', margin: '0 auto 16px' }} />
       <h2 style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "'Sora',sans-serif", marginBottom: 10 }}>
         Welcome to Stride, {employee?.full_name?.split(' ')[0]}!
       </h2>

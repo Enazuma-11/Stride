@@ -8,6 +8,7 @@ import { getAllLeaveRequests, updateLeaveStatus } from '../../lib/api'
 
 // ── Stat cards ────────────────────────────────────────────────────────────────
 function StatCards({ requests }) {
+  const r = useResponsive()
   const stats = [
     { label: 'Pending Approvals',   val: requests.filter(r => r.status === 'pending').length,  color: C.amber,  bg: C.amberSoft  },
     { label: 'Approved This Month', val: requests.filter(r => r.status === 'approved').length, color: C.green,  bg: C.greenSoft  },
@@ -28,6 +29,7 @@ function StatCards({ requests }) {
 
 // ── Pending queue ─────────────────────────────────────────────────────────────
 function PendingQueue({ requests, onAction }) {
+  const r = useResponsive()
   const pending = requests.filter(r => r.status === 'pending')
   if (!pending.length) return (
     <EmptyState icon="✅" title="All caught up!" subtitle="No pending leave requests." />
@@ -70,6 +72,7 @@ function PendingQueue({ requests, onAction }) {
 
 // ── All requests table ────────────────────────────────────────────────────────
 function AllRequestsTable({ requests, onAction }) {
+  const r = useResponsive()
   const [filter, setFilter] = useState('all')
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
 

@@ -36,17 +36,18 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: 420, padding: '0 20px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 14,
-            background: C.accent, margin: '0 auto 16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, boxShadow: `0 8px 24px ${C.accent}60`,
-          }}>⚡</div>
+          <img src="/logo.png" alt="SporTech" style={{
+            width: 80, height: 80, borderRadius: 16,
+            background: '#fff', padding: 6,
+            margin: '0 auto 16px', display: 'block',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            objectFit: 'contain',
+          }} />
           <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', fontFamily: "'Sora', sans-serif" }}>
             SporTech Innovation Lab
           </div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>
-            Employee Portal
+            Employee Portal · Stride
           </div>
         </div>
 
