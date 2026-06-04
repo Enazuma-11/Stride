@@ -278,13 +278,13 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
             : (
               <Card padding="0">
                 {pendingLeaves.slice(0, 5).map((l, i) => {
-                  const emp = employees.find(e => e.id === l.employee_id) || l.employee
+                  const emp = employees.find(e => e.id === l.employee_id) || l.employee || {}
                   const lt  = LEAVE_TYPES.find(t => t.id === l.leave_type)
                   return (
                     <div key={l.id} style={{ padding: '12px 16px', borderBottom: i < Math.min(pendingLeaves.length, 5) - 1 ? `1px solid ${C.border}` : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Avatar initials={emp?.avatar_initials || '??'} size={30} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{emp?.full_name}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{emp?.full_name || 'Employee'}</div>
                         <div style={{ fontSize: 10, color: C.textMid }}>{lt?.label || l.leave_type} · {l.from_date} → {l.to_date}</div>
                       </div>
                       <span style={{ fontSize: 10, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: '2px 8px', borderRadius: 20 }}>{l.days}d</span>

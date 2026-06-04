@@ -142,8 +142,8 @@ function EmployeeFormFields({ form, set, showTempPassword = false }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Input label="Job Title / Role" value={form.role} onChange={set('role')}
-              placeholder={form.employeeType === 'intern' ? 'Frontend Intern' : 'Senior Developer'} required />
+            <Input label="Job Title (shown in portal)"  value={form.role} onChange={set('role')}
+              placeholder={form.employeeType === 'intern' ? 'Frontend Intern' : form.employeeType === 'contractor' ? 'Freelance Designer' : 'Senior Developer'} required />
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 8 }}>
                 Department <span style={{ color: C.accent }}>*</span>

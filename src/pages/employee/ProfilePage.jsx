@@ -6,6 +6,7 @@ import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
   getFullProfile, updateEmployeeBasic, submitChangeRequest,
+  hrUpdateEmployee,
   addEducation, deleteEducation,
   saveEmergencyContact, deleteEmergencyContact,
   saveDependent, deleteDependent,
@@ -863,7 +864,6 @@ export default function ProfilePage() {
       await load()
     } else if (['work','payroll','compliance','exit'].includes(section)) {
       if (isHR) {
-        const { hrUpdateEmployee } = await import('../../lib/api.profile')
         await hrUpdateEmployee(me.id, section, data)
       } else {
         await submitChangeRequest(me.id, section, data)

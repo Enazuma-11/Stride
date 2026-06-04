@@ -40,11 +40,11 @@ function PendingQueue({ requests, onAction }) {
         return (
           <Card key={r.id} style={{ padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Avatar initials={emp?.avatar_initials || '??'} size={44} />
+              <Avatar initials={emp?.avatar_initials || emp?.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase() || '??'} size={44} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: C.text, marginBottom: 2 }}>{emp?.full_name}</div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: C.text, marginBottom: 2 }}>{emp?.full_name || 'Unknown Employee'}</div>
                 <div style={{ fontSize: 12, color: C.textMid, marginBottom: 8 }}>
-                  {emp?.role} · {emp?.department}
+                  {emp?.role || '—'} · {emp?.department || '—'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
                   <Tag label={lt?.label || r.leave_type} color={lt?.color || C.brand} />
@@ -108,16 +108,16 @@ function AllRequestsTable({ requests, onAction }) {
               </thead>
               <tbody>
                 {filtered.map((r, i) => {
-                  const emp = r.employee
+                  const emp = r.employee || {}
                   const lt  = LEAVE_TYPES.find(t => t.id === r.leave_type)
                   return (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? C.surface : C.surfaceAlt }}>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Avatar initials={emp?.avatar_initials || '??'} size={28} />
+                          <Avatar initials={emp?.avatar_initials || emp?.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase() || '??'} size={28} />
                           <div>
-                            <div style={{ fontWeight: 600, color: C.text, fontSize: 13 }}>{emp?.full_name}</div>
-                            <div style={{ fontSize: 11, color: C.textLight }}>{emp?.department}</div>
+                            <div style={{ fontWeight: 600, color: C.text, fontSize: 13 }}>{emp?.full_name || 'Employee'}</div>
+                            <div style={{ fontSize: 11, color: C.textLight }}>{emp?.department || '—'}</div>
                           </div>
                         </div>
                       </td>
@@ -167,11 +167,12 @@ export default function HRDashboardPage() {
       // Send in-app notification
       await notifyLeaveDecision(updated, updated.employee_id, status)
       // Send email notification
-      const emp = requests.find(r => r.id === leaveId)?.employee
+      const leaveRecord = requests.find(r => r.id === leaveId)
+      const emp = leaveRecord?.employee
       if (emp?.email) {
         sendLeaveDecisionEmail({
           toEmail:   emp.email,
-          toName:    emp.full_name,
+          toName:    emp.full_name || 'Employee',
           status,
           leaveType: updated.leave_type?.replace('_', '/'),
           fromDate:  updated.from_date,
