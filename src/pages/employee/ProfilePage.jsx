@@ -74,6 +74,7 @@ function FieldRow({ label, value, placeholder = '—' }) {
 
 // ── Section wrapper with edit toggle ─────────────────────────────────────────
 function SectionCard({ title, subtitle, isFree, isHR, onSave, children, editChildren }) {
+  const r = useResponsive()
   const [editing, setEditing] = useState(false)
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
@@ -135,6 +136,7 @@ function SectionCard({ title, subtitle, isFree, isHR, onSave, children, editChil
 
 // ── SECTION 1: Personal ───────────────────────────────────────────────────────
 function PersonalSection({ employee, isHR, onUpdate }) {
+  const r = useResponsive()
   const [form, setForm] = useState({
     first_name: employee.first_name || '',
     middle_name: employee.middle_name || '',
@@ -192,6 +194,7 @@ function PersonalSection({ employee, isHR, onUpdate }) {
 
 // ── SECTION 2: Work ───────────────────────────────────────────────────────────
 function WorkSection({ employee, isHR, onUpdate }) {
+  const r = useResponsive()
   const [form, setForm] = useState({
     role: employee.role || '',
     department: employee.department || '',
@@ -254,6 +257,7 @@ function WorkSection({ employee, isHR, onUpdate }) {
 
 // ── SECTION 3: Contact ────────────────────────────────────────────────────────
 function ContactSection({ employee, isHR, onUpdate }) {
+  const r = useResponsive()
   const addr = employee.present_address || {}
   const perm = employee.permanent_address || {}
   const [form, setForm] = useState({
@@ -339,6 +343,7 @@ function ContactSection({ employee, isHR, onUpdate }) {
 
 // ── SECTION 4: Payroll ────────────────────────────────────────────────────────
 function PayrollSection({ payroll, isHR, employeeId, onUpdate }) {
+  const r = useResponsive()
   const p = payroll || {}
   const [form, setForm] = useState({
     base_salary: p.base_salary || '',
@@ -402,6 +407,7 @@ function PayrollSection({ payroll, isHR, employeeId, onUpdate }) {
 
 // ── SECTION 5: Compliance ─────────────────────────────────────────────────────
 function ComplianceSection({ compliance, education, documents, isHR, employeeId, onUpdate, onDocUpload, onDocDelete }) {
+  const r = useResponsive()
   const c = compliance || {}
   const [form, setForm] = useState({
     aadhaar_number: c.aadhaar_number || '',
@@ -528,6 +534,7 @@ function ComplianceSection({ compliance, education, documents, isHR, employeeId,
 
 // ── SECTION 6: Emergency Contacts ─────────────────────────────────────────────
 function EmergencySection({ emergency, dependents, isHR, employeeId, onSaveContact, onDeleteContact, onSaveDependent, onDeleteDependent }) {
+  const r = useResponsive()
   const [adding, setAdding] = useState(false)
   const [addingDep, setAddingDep] = useState(false)
   const emptyContact = { full_name: '', relationship: '', phone: '', alt_phone: '', email: '', priority: emergency.length + 1 }
@@ -605,6 +612,7 @@ function EmergencySection({ emergency, dependents, isHR, employeeId, onSaveConta
 
 // ── SECTION 7: Skills ─────────────────────────────────────────────────────────
 function SkillsSection({ skills, certifications, languages, employeeId, onAddSkill, onDeleteSkill, onAddCert, onDeleteCert, onAddLang, onDeleteLang }) {
+  const r = useResponsive()
   const [skillForm, setSkillForm] = useState({ skill_name: '', category: 'Technical', proficiency: 'intermediate' })
   const [certForm,  setCertForm]  = useState({ title: '', issuing_authority: '', license_number: '', issue_date: '', expiry_date: '' })
   const [langForm,  setLangForm]  = useState({ language: '', proficiency: 'professional' })
@@ -691,6 +699,7 @@ function SkillsSection({ skills, certifications, languages, employeeId, onAddSki
 
 // ── SECTION 8: Exit ───────────────────────────────────────────────────────────
 function ExitSection({ exit, isHR, employeeId, onUpdate }) {
+  const r = useResponsive()
   const e = exit || {}
   const [form, setForm] = useState({
     last_working_day: e.last_working_day || '',
