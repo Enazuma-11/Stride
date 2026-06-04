@@ -200,13 +200,15 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
 
   // Dept breakdown
   const deptCounts = activeEmp.reduce((acc, e) => {
-    acc[e.department] = (acc[e.department] || 0) + 1
+    const dept = e.department || 'Unassigned'
+    acc[dept] = (acc[dept] || 0) + 1
     return acc
   }, {})
 
   // Employment type breakdown
   const typeCounts = activeEmp.reduce((acc, e) => {
-    acc[e.employee_type] = (acc[e.employee_type] || 0) + 1
+    const type = e.employee_type || 'permanent'
+    acc[type] = (acc[type] || 0) + 1
     return acc
   }, {})
 

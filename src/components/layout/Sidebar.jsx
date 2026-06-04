@@ -37,18 +37,19 @@ export default function Sidebar() {
       minHeight: '100vh', display: 'flex',
       flexDirection: 'column', flexShrink: 0,
     }}>
-      <div style={{ padding: '28px 24px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 8, background: C.accent,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-          }}>⚡</div>
+      <div style={{ padding: '20px 20px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <img src="/logo.png" alt="SporTech" style={{
+            width: 40, height: 40, borderRadius: 8,
+            objectFit: 'contain', background: '#fff', padding: 3,
+            flexShrink: 0,
+          }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif", lineHeight: 1.1 }}>SporTech</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', letterSpacing: 1.5, textTransform: 'uppercase' }}>Innovation Lab</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif", lineHeight: 1.1 }}>SporTech</div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Innovation Lab Pvt Ltd</div>
           </div>
         </div>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, marginTop: 10, textTransform: 'uppercase' }}>
+        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase' }}>
           Stride · Employee Portal
         </div>
       </div>
