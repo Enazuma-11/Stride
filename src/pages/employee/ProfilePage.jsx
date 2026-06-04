@@ -860,22 +860,31 @@ export default function ProfilePage() {
   useEffect(() => { load() }, [load])
 
   // ── update handlers ────────────────────────────────────────────────────────
+  // Sanitize empty strings to null for date fields before saving
+  function sanitize(data) {
+    const dateFields = ['date_of_birth','join_date','probation_end_date','internship_end_date','passport_issue_date','passport_expiry_date','visa_expiry_date','last_working_day','nda_signed_date','contract_signed_date']
+    const result = { ...data }
+    dateFields.forEach(f => { if (result[f] === '') result[f] = null })
+    return result
+  }
+
   async function handleUpdate(section, data) {
+    const cleanData = sanitize(data)
     if (section === 'basic' || section === 'contact') {
-      await updateEmployeeBasic(me.id, data)
+      await updateEmployeeBasic(me.id, cleanData)
       await refetchEmployee()
       await load()
     } else if (section === 'addEdu') {
-      await addEducation(me.id, data)
+      await addEducation(me.id, cleanData)
       await load()
     } else if (section === 'deleteEdu') {
       await deleteEducation(data)
       await load()
     } else if (['work','payroll','compliance','exit'].includes(section)) {
       if (isHR) {
-        await hrUpdateEmployee(me.id, section, data)
+        await hrUpdateEmployee(me.id, section, cleanData)
       } else {
-        await submitChangeRequest(me.id, section, data)
+        await submitChangeRequest(me.id, section, cleanData)
       }
       await load()
     }
