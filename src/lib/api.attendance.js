@@ -102,7 +102,55 @@ export async function checkOut(employeeId) {
     .single()
 
   if (error) throw error
+
+  // Auto-deduct 0.5 casual_sick leave for half day
+  if (status === 'half_day') {
+    await deductHalfDayLeave(employeeId, existing.date)
+  }
+
   return data
+}
+
+// ─── DEDUCT HALF DAY LEAVE ────────────────────────────────────────────────────
+async function deductHalfDayLeave(employeeId, date) {
+  const year = new Date(date).getFullYear()
+  try {
+    // Check if already deducted for this date (avoid double deduction)
+    const { data: existing } = await supabase
+      .from('half_day_deductions')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('date', date)
+      .maybeSingle()
+
+    if (existing) return // already deducted
+
+    // Deduct 0.5 days from casual_sick leave
+    const { data: balance } = await supabase
+      .from('leave_balances')
+      .select('id, used_days, total_days')
+      .eq('employee_id', employeeId)
+      .eq('leave_type', 'casual_sick')
+      .eq('year', year)
+      .single()
+
+    if (!balance) return
+
+    // Only deduct if balance available (used_days + 0.5 <= total_days)
+    if (balance.used_days + 0.5 <= balance.total_days) {
+      await supabase
+        .from('leave_balances')
+        .update({ used_days: balance.used_days + 0.5 })
+        .eq('id', balance.id)
+
+      // Log the deduction
+      await supabase
+        .from('half_day_deductions')
+        .insert({ employee_id: employeeId, date, leave_type: 'casual_sick', days_deducted: 0.5 })
+    }
+  } catch (e) {
+    console.warn('Half day deduction warning:', e.message)
+  }
 }
 
 // ─── GET TODAY'S RECORD ───────────────────────────────────────────────────────

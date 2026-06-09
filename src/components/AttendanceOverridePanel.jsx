@@ -217,6 +217,7 @@ export default function AttendanceOverridePanel({ reviewerId }) {
             value={date}
             onChange={e => setDate(e.target.value)}
             max={todayISO()}
+            min={(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })()}
             style={{ padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}
           />
         </div>
@@ -229,7 +230,7 @@ export default function AttendanceOverridePanel({ reviewerId }) {
         borderBottom: `1px solid ${C.amber}20`,
         fontSize: 12, color: C.amber,
       }}>
-        ⚠️ All overrides are logged with your name, timestamp and reason. For employees with no record, editing creates a new attendance entry.
+        ⚠️ All overrides are logged with your name, timestamp and reason. You can edit attendance for up to 30 days back (current salary cycle). Half-day records automatically deduct 0.5 casual/sick leave.
       </div>
 
       {/* Employee rows */}
