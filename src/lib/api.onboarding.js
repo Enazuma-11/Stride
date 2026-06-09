@@ -1,4 +1,28 @@
 import { supabase } from './supabase'
+
+// ── Call Supabase Edge Function (handles admin API securely) ─────────────────
+async function callEdgeFunction(body) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not authenticated')
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const url = `${supabaseUrl}/functions/v1/create-employee`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to create employee')
+  return data.employee
+}
+
 import { REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, LEAVE_BALANCES_BY_TYPE } from './constants'
 
 // ─── EMAIL VALIDATION ─────────────────────────────────────────────────────────
