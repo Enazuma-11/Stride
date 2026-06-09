@@ -1,6 +1,22 @@
 import { supabase } from './supabase'
+import { REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, LEAVE_BALANCES_BY_TYPE } from './constants'
 
-// ── Call Supabase Edge Function (handles admin API securely) ─────────────────
+// ─── EMAIL VALIDATION ─────────────────────────────────────────────────────────
+
+export function validateEmailForType(email, employeeType) {
+  const needsCompanyEmail = REQUIRES_COMPANY_EMAIL.includes(employeeType)
+  if (needsCompanyEmail && !email.endsWith(`@${COMPANY_DOMAIN}`)) {
+    return `${getTypeLabel(employeeType)}s must use a @${COMPANY_DOMAIN} company email.`
+  }
+  return null
+}
+
+function getTypeLabel(type) {
+  const map = { permanent: 'Permanent employee', parttime: 'Part-time employee', intern: 'Intern', contractor: 'Contractor' }
+  return map[type] || type
+}
+
+// ─── EDGE FUNCTION CALLER ─────────────────────────────────────────────────────
 async function callEdgeFunction(body) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not authenticated')
@@ -23,102 +39,22 @@ async function callEdgeFunction(body) {
   return data.employee
 }
 
-import { REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, LEAVE_BALANCES_BY_TYPE } from './constants'
-
-// ─── EMAIL VALIDATION ─────────────────────────────────────────────────────────
-
-export function validateEmailForType(email, employeeType) {
-  const needsCompanyEmail = REQUIRES_COMPANY_EMAIL.includes(employeeType)
-  if (needsCompanyEmail && !email.endsWith(`@${COMPANY_DOMAIN}`)) {
-    return `${getTypeLabel(employeeType)}s must use a @${COMPANY_DOMAIN} company email.`
-  }
-  if (!needsCompanyEmail && email.endsWith(`@${COMPANY_DOMAIN}`)) {
-    return null // personal email preferred but company email also accepted for interns/contractors
-  }
-  return null // valid
-}
-
-function getTypeLabel(type) {
-  const map = { permanent: 'Permanent employee', parttime: 'Part-time employee', intern: 'Intern', contractor: 'Contractor' }
-  return map[type] || type
-}
-
 // ── Flow 1: HR invites via email ──────────────────────────────────────────────
-export async function inviteEmployee({ fullName, email, role, roleType, employeeType, department, managerId, joinDate, internshipEndDate, phone }) {
-  const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
-    data: { full_name: fullName },
-    redirectTo: `${window.location.origin}/set-password`,
-  })
-  if (inviteError) throw inviteError
-
-  const initials = toInitials(fullName)
-  const { data: emp, error: empError } = await supabase
-    .from('employees')
-    .insert({
-      user_id:            inviteData.user.id,
-      full_name:          fullName,
-      email,
-      role,
-      role_type:          roleType,
-      employee_type:      employeeType,
-      department,
-      avatar_initials:    initials,
-      manager_id:         managerId || null,
-      phone:              phone || null,
-      join_date:          joinDate,
-      internship_end_date: employeeType === 'intern' ? internshipEndDate : null,
-      status:             'active',
-      onboarding_status:  'invited',
-    })
-    .select()
-    .single()
-  if (empError) throw empError
-
-  await seedLeaveBalances(emp.id, employeeType, form?.gender || 'prefer_not_to_say')
-  return emp
+export async function inviteEmployee(params) {
+  const emailError = validateEmailForType(params.email, params.employeeType)
+  if (emailError) throw new Error(emailError)
+  return callEdgeFunction({ flow: 'invite', ...params })
 }
 
 // ── Flow 2: HR creates with temp password ─────────────────────────────────────
-export async function createEmployeeWithPassword({ fullName, email, role, roleType, employeeType, department, managerId, joinDate, internshipEndDate, phone, tempPassword }) {
-  const { data: userData, error: userError } = await supabase.auth.admin.createUser({
-    email,
-    password:      tempPassword,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-  })
-  if (userError) throw userError
-
-  const initials = toInitials(fullName)
-  const { data: emp, error: empError } = await supabase
-    .from('employees')
-    .insert({
-      user_id:             userData.user.id,
-      full_name:           fullName,
-      email,
-      role,
-      role_type:           roleType,
-      employee_type:       employeeType,
-      department,
-      avatar_initials:     initials,
-      manager_id:          managerId || null,
-      phone:               phone || null,
-      join_date:           joinDate,
-      internship_end_date: employeeType === 'intern' ? internshipEndDate : null,
-      status:              'active',
-      onboarding_status:   'active',
-      must_change_password: true,
-    })
-    .select()
-    .single()
-  if (empError) throw empError
-
-  await seedLeaveBalances(emp.id, employeeType, form?.gender || 'prefer_not_to_say')
-  return emp
+export async function createEmployeeWithPassword(params) {
+  const emailError = validateEmailForType(params.email, params.employeeType)
+  if (emailError) throw new Error(emailError)
+  return callEdgeFunction({ flow: 'create_with_password', ...params })
 }
 
 // ── Flow 3: Employee self-registers ───────────────────────────────────────────
 export async function selfRegister({ fullName, email, password, employeeType, department, role, phone }) {
-  // Validate email against employee type
   const emailError = validateEmailForType(email, employeeType)
   if (emailError) throw new Error(emailError)
 
@@ -152,7 +88,6 @@ export async function selfRegister({ fullName, email, password, employeeType, de
     .select()
     .single()
   if (empError) throw empError
-
   return emp
 }
 
@@ -176,7 +111,7 @@ export async function approveEmployee(employeeId, { role, roleType, employeeType
     .single()
   if (error) throw error
 
-  await seedLeaveBalances(employeeId, employeeType, form?.gender || 'prefer_not_to_say')
+  await seedLeaveBalances(employeeId, employeeType)
   return data
 }
 
@@ -208,10 +143,7 @@ export async function getAllEmployeesForHR() {
 }
 
 export async function resendInvite(email) {
-  const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${window.location.origin}/set-password`,
-  })
-  if (error) throw error
+  return callEdgeFunction({ flow: 'invite', email, resendOnly: true })
 }
 
 export async function deactivateEmployee(employeeId) {
@@ -223,7 +155,6 @@ export async function deactivateEmployee(employeeId) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 function toInitials(fullName) {
   return fullName.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
