@@ -1,29 +1,50 @@
 import { supabase } from './supabase'
-import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_START_HOUR, LATE_MARK_MINUTES } from './constants'
+import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_START_HOUR, LATE_MARK_MINUTES, WORK_HOURS_BY_TYPE } from './constants'
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-function computeStatus(checkIn, checkOut, isWFH) {
+function computeStatus(checkIn, checkOut, isWFH, employeeType = 'permanent') {
   if (!checkIn) return 'absent'
   const inTime  = new Date(checkIn)
   const outTime = checkOut ? new Date(checkOut) : null
 
-  // Late mark: arrived more than grace period after work start
-  const scheduledStart = new Date(inTime)
-  scheduledStart.setHours(WORK_START_HOUR, LATE_MARK_MINUTES, 0, 0)
-  const isLate = inTime > scheduledStart
+  // Use correct thresholds based on employee type
+  const policy     = WORK_HOURS_BY_TYPE[employeeType] || WORK_HOURS_BY_TYPE.permanent
+  const fullDay    = policy.fullDay
+  const halfDay    = policy.halfDay
+  const isFlexible = employeeType === 'intern' || employeeType === 'contractor'
 
-  if (!outTime) return isLate ? 'late_mark' : isWFH ? 'wfh' : 'present'
+  // Late mark only applies to non-flexible employees
+  let isLate = false
+  if (!isFlexible) {
+    const scheduledStart = new Date(inTime)
+    scheduledStart.setHours(WORK_START_HOUR, LATE_MARK_MINUTES, 0, 0)
+    isLate = inTime > scheduledStart
+  }
+
+  if (!outTime) return isFlexible ? (isWFH ? 'wfh' : 'present') : (isLate ? 'late_mark' : isWFH ? 'wfh' : 'present')
 
   const hoursWorked = (outTime - inTime) / 3600000
 
-  if (hoursWorked >= FULL_DAY_HOURS) {
-    if (isLate)  return 'late_mark'
-    if (isWFH)   return 'wfh'
+  if (hoursWorked >= fullDay) {
+    if (!isFlexible && isLate) return 'late_mark'
+    if (isWFH) return 'wfh'
     return 'present'
   }
-  if (hoursWorked >= HALF_DAY_HOURS) return 'half_day'
+  if (hoursWorked >= halfDay) return 'half_day'
+  // Below half day threshold
+  if (isFlexible) return 'half_day'  // interns don't get late_mark, just half_day
   return 'late_mark'
+}
+
+// ─── GET EMPLOYEE TYPE ────────────────────────────────────────────────────────
+async function getEmployeeType(employeeId) {
+  const { data } = await supabase
+    .from('employees')
+    .select('employee_type')
+    .eq('id', employeeId)
+    .single()
+  return data?.employee_type || 'permanent'
 }
 
 export function formatTime(isoString) {
@@ -57,7 +78,8 @@ export async function checkIn(employeeId, isWFH = false) {
   if (existing?.check_in) throw new Error('You have already checked in today.')
 
   const now = new Date().toISOString()
-  const status = computeStatus(now, null, isWFH)
+  const empType = await getEmployeeType(employeeId)
+  const status = computeStatus(now, null, isWFH, empType)
 
   const { data, error } = await supabase
     .from('attendance')
@@ -91,7 +113,8 @@ export async function checkOut(employeeId) {
   if (fetchError || !existing) throw new Error('No check-in found for today. Please check in first.')
   if (existing.check_out)      throw new Error('You have already checked out today.')
 
-  const status = computeStatus(existing.check_in, now, existing.is_wfh)
+  const empType = await getEmployeeType(employeeId)
+  const status = computeStatus(existing.check_in, now, existing.is_wfh, empType)
   const hours  = hoursWorked(existing.check_in, now)
 
   const { data, error } = await supabase

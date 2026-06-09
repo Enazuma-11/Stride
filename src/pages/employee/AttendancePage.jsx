@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Spinner, EmptyState, SectionTitle, Alert } from '../../components/ui'
-import { C, ATTENDANCE_STATUSES } from '../../lib/constants'
+import { C, ATTENDANCE_STATUSES, WORK_HOURS_BY_TYPE } from '../../lib/constants'
 import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -409,11 +409,11 @@ export default function AttendancePage() {
                 Office Hours
               </div>
               {[
-                { label: 'Work Start', val: '9:00 AM' },
+                { label: 'Work Start',   val: '9:00 AM' },
                 { label: 'Grace Period', val: 'Until 9:30 AM' },
-                { label: 'Work End', val: '6:00 PM' },
-                { label: 'Full Day', val: '8+ hours' },
-                { label: 'Half Day', val: '4–8 hours' },
+                { label: 'Work End',     val: employee?.employee_type === 'intern' ? '2:30 PM' : '6:00 PM' },
+                { label: 'Full Day',     val: `${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].fullDay}+ hours` },
+                { label: 'Half Day',     val: `${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].halfDay}–${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].fullDay} hours` },
               ].map(r => (
                 <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 13 }}>
                   <span style={{ color: C.textMid }}>{r.label}</span>
