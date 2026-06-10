@@ -88,8 +88,72 @@ Deno.serve(async (req) => {
       })
       if (error) throw error
       authUser = data.user
+    } else if (flow === 'approve_employee') {
+      // HR approves self-registered employee - unban them
+      const { data: emp } = await supabaseAdmin
+        .from('employees')
+        .select('user_id')
+        .eq('id', body.employeeId)
+        .single()
+
+      if (emp?.user_id) {
+        await supabaseAdmin.auth.admin.updateUserById(emp.user_id, { ban_duration: 'none' })
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      )
+
+    } else if (flow === 'self_register') {
+      // Self registration - create unconfirmed user, employee row as inactive
+      // No auth check needed for self registration
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: body.password,
+        email_confirm: true,  // auto confirm so they can log in after HR approval
+        user_metadata: { full_name: fullName },
+      })
+      if (error) throw error
+      authUser = data.user
+
+      // Create employee as inactive pending HR approval
+      const initials = fullName.trim().split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
+      const { data: emp, error: empError } = await supabaseAdmin
+        .from('employees')
+        .insert({
+          user_id:           authUser.id,
+          full_name:         fullName,
+          email,
+          role:              body.role || 'New Employee',
+          role_type:         'employee',
+          employee_type:     employeeType || 'permanent',
+          department:        department || 'Unassigned',
+          avatar_initials:   initials,
+          phone:             phone || null,
+          join_date:         new Date().toISOString().split('T')[0],
+          status:            'inactive',
+          onboarding_status: 'pending_approval',
+          onboarding_completed: false,
+        })
+        .select()
+        .single()
+
+      if (empError) {
+        await supabaseAdmin.auth.admin.deleteUser(authUser.id)
+        throw empError
+      }
+
+      // Block login until HR approves by banning the user
+      await supabaseAdmin.auth.admin.updateUserById(authUser.id, { ban_duration: '87600h' }) // 10 years
+
+      return new Response(
+        JSON.stringify({ success: true, employee: emp }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      )
+
     } else {
-      throw new Error('Invalid flow. Must be create_with_password or invite')
+      throw new Error('Invalid flow. Must be create_with_password, invite, or self_register')
     }
 
     // Generate initials and employee code
@@ -205,3 +269,7 @@ function getLeaveBalances(employeeType, gender) {
 
   return permanent
 }
+
+// Note: approveEmployee is handled in api.onboarding.js
+// When HR approves, call this edge function with flow: 'approve_employee'
+// to unban the user

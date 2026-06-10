@@ -58,37 +58,28 @@ export async function selfRegister({ fullName, email, password, employeeType, de
   const emailError = validateEmailForType(email, employeeType)
   if (emailError) throw new Error(emailError)
 
-  const { data: signupData, error: signupError } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name: fullName },
-      emailRedirectTo: `${window.location.origin}/login`,
-    },
-  })
-  if (signupError) throw signupError
+  // Use Edge Function - no auth needed for self registration
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const url = `${supabaseUrl}/functions/v1/create-employee`
 
-  const initials = toInitials(fullName)
-  const { data: emp, error: empError } = await supabase
-    .from('employees')
-    .insert({
-      user_id:           signupData.user?.id || null,
-      full_name:         fullName,
-      email,
-      role:              role || 'New Employee',
-      role_type:         'employee',
-      employee_type:     employeeType,
-      department:        department || 'Unassigned',
-      avatar_initials:   initials,
-      phone:             phone || null,
-      join_date:         new Date().toISOString().split('T')[0],
-      status:            'inactive',
-      onboarding_status: 'pending_approval',
-    })
-    .select()
-    .single()
-  if (empError) throw empError
-  return emp
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      flow: 'self_register',
+      fullName, email, password,
+      employeeType, department,
+      role: role || 'New Employee',
+      phone,
+    }),
+  })
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Registration failed')
+  return data.employee
 }
 
 // ── HR approves a self-registered employee ────────────────────────────────────
@@ -110,6 +101,21 @@ export async function approveEmployee(employeeId, { role, roleType, employeeType
     .select()
     .single()
   if (error) throw error
+
+  // Unban the user via Edge Function
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    await fetch(`${supabaseUrl}/functions/v1/create-employee`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ flow: 'approve_employee', employeeId }),
+    })
+  } catch (e) { console.warn('Unban warning:', e.message) }
 
   await seedLeaveBalances(employeeId, employeeType)
   return data
