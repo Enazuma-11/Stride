@@ -159,3 +159,11 @@ export const NOTIFICATION_TYPES = {
   attendance_missing: { icon: '⏰', label: 'Attendance Alert',   color: '#B45309' },
   onboarding:         { icon: '👋', label: 'Welcome',            color: '#6D28D9' },
 }
+
+// ─── WORK HOURS BY EMPLOYEE TYPE ─────────────────────────────────────────────
+export const WORK_HOURS_BY_TYPE = {
+  permanent:  { fullDay: 8,   halfDay: 4    },
+  parttime:   { fullDay: 8,   halfDay: 4    },
+  contractor: { fullDay: 8,   halfDay: 4    },
+  intern:     { fullDay: 5.5, halfDay: 2.75 },
+}
