@@ -72,9 +72,12 @@ export default function Sidebar() {
         {/* Employee pill */}
         {employee && (
           <div style={{ margin: '14px 12px 6px', padding: '10px 12px', background: 'rgba(255,255,255,0.07)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.08)', position: 'relative', zIndex: 1, flexShrink: 0 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: DARK, fontFamily: FONTS.display, flexShrink: 0 }}>
-              {employee.avatar_initials || '??'}
-            </div>
+            {employee.profile_photo_url
+              ? <img src={employee.profile_photo_url} alt={employee.full_name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid rgba(255,255,255,0.2)' }} />
+              : <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: DARK, fontFamily: FONTS.display, flexShrink: 0 }}>
+                  {employee.avatar_initials || '??'}
+                </div>
+            }
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontFamily: FONTS.display, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{employee.full_name}</div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{employee.role}</div>

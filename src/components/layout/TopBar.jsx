@@ -44,15 +44,20 @@ export default function TopBar({ title, subtitle }) {
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: FONTS.display }}>{employee.full_name}</div>
               <div style={{ fontSize: 11, color: C.textLight, fontFamily: FONTS.body }}>{employee.role}</div>
             </div>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: C.text, fontFamily: FONTS.display, flexShrink: 0 }}>
+            {employee.profile_photo_url
+              ? <img src={employee.profile_photo_url} alt={employee.full_name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid ' + C.border }} onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
+              : null}
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.gradientH, display: employee.profile_photo_url ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: C.text, fontFamily: FONTS.display, flexShrink: 0 }}>
               {employee.avatar_initials || '??'}
             </div>
           </div>
         )}
         {employee && r.isMobile && (
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: C.text, fontFamily: FONTS.display }}>
-            {employee.avatar_initials || '??'}
-          </div>
+          employee.profile_photo_url
+              ? <img src={employee.profile_photo_url} alt={employee.full_name} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)' }} />
+              : <div style={{ width: 30, height: 30, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: C.text, fontFamily: FONTS.display }}>
+                  {employee.avatar_initials || '??'}
+                </div>
         )}
       </div>
     </header>

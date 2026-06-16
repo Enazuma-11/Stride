@@ -35,8 +35,8 @@ export default function LoginPage() {
 
   const gradBtn = {
     width: '100%', padding: '13px', borderRadius: 10, border: 'none',
-    background: loading ? C.border : C.gradientH,
-    color: loading ? C.textLight : C.text,
+    background: loading ? C.border : C.brand,
+    color: loading ? C.textLight : '#fff',
     fontSize: 14, fontWeight: 700, fontFamily: FONTS.display,
     cursor: loading ? 'not-allowed' : 'pointer',
     boxShadow: loading ? 'none' : C.shadowTeal,

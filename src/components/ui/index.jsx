@@ -85,7 +85,7 @@ export function Tag({ label, color = C.brand }) {
 export function Button({ children, onClick, variant = 'primary', size = 'md', disabled = false, style = {}, fullWidth = false }) {
   const sizes = { sm: { padding: '7px 14px', fontSize: 12, borderRadius: 8 }, md: { padding: '10px 20px', fontSize: 13, borderRadius: 10 }, lg: { padding: '13px 28px', fontSize: 14, borderRadius: 12 } }
   const variants = {
-    primary:   { background: disabled ? C.border : C.gradientH, color: disabled ? C.textLight : C.text, border: 'none', boxShadow: disabled ? 'none' : C.shadowTeal },
+    primary:   { background: disabled ? C.border : C.brand, color: disabled ? C.textLight : '#fff', border: 'none', boxShadow: disabled ? 'none' : '0 2px 8px rgba(18,109,173,0.3)' },
     brand:     { background: disabled ? C.border : C.brand, color: disabled ? C.textLight : '#fff', border: 'none', boxShadow: 'none' },
     outline:   { background: 'transparent', color: disabled ? C.textLight : C.brand, border: `1.5px solid ${disabled ? C.border : C.brand}`, boxShadow: 'none' },
     teal:      { background: 'transparent', color: disabled ? C.textLight : C.teal, border: `1.5px solid ${disabled ? C.border : C.teal}`, boxShadow: 'none' },
