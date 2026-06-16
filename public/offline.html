@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stride — Offline</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(160deg, #1a0f2e, #0d3a5c);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; color: #fff;
+  }
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px; padding: 48px 36px;
+    text-align: center; max-width: 380px; width: 100%;
+    backdrop-filter: blur(12px);
+  }
+  .icon { font-size: 56px; margin-bottom: 20px; }
+  h1 { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+  p  { font-size: 14px; color: rgba(255,255,255,0.55); line-height: 1.6; margin-bottom: 28px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0,212,170,0.15); color: #00d4aa;
+    border: 1px solid rgba(0,212,170,0.3);
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    margin-bottom: 24px;
+  }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: #00d4aa; animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+  button {
+    width: 100%; padding: 13px; border-radius: 12px; border: none;
+    background: linear-gradient(90deg,#9b75f1,#126dad,#00d4aa,#a4ff3d);
+    color: #1a0f2e; font-size: 14px; font-weight: 700;
+    font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,212,170,0.3);
+  }
+  .features { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; text-align: left; }
+  .feat { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.6); }
+  .feat span:first-child { font-size: 18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">📡</div>
+  <div class="badge"><div class="pulse"></div> You're offline</div>
+  <h1>No Internet Connection</h1>
+  <p>Don't worry — some features are still available from your last session.</p>
+  <div class="features">
+    <div class="feat"><span>✅</span><span>View cached dashboard data</span></div>
+    <div class="feat"><span>✅</span><span>Browse your leave history</span></div>
+    <div class="feat"><span>✅</span><span>Check your profile</span></div>
+    <div class="feat"><span>⏳</span><span>Attendance sync when back online</span></div>
+  </div>
+  <button onclick="window.location.reload()">↺ Try Again</button>
+</div>
+</body>
+</html>

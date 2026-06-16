@@ -1,3 +1,4 @@
+import PWAInstallPrompt from './components/PWAInstallPrompt'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
@@ -34,7 +35,8 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
-      </BrowserRouter>
+        <PWAInstallPrompt />
+  </BrowserRouter>
     </AuthProvider>
   )
 }
