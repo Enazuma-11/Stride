@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import EmployeeICard from '../../components/EmployeeICard'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, Alert, Input, Select, Textarea, SectionTitle } from '../../components/ui'
 import { C, GENDERS, DEPARTMENTS, EMPLOYEE_TYPES } from '../../lib/constants'
@@ -833,6 +834,9 @@ function ProfileHeader({ employee, isHR, onPhotoUpload }) {
             <span style={{ fontSize: 11, background: C.surfaceAlt, color: C.textMid, padding: '2px 10px', borderRadius: 20, fontWeight: 600 }}>
               {employee.email}
             </span>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <EmployeeICard employee={employee} />
           </div>
         </div>
       </div>

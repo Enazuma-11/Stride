@@ -159,12 +159,22 @@ Deno.serve(async (req) => {
     // Generate initials and employee code
     const initials = fullName.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
-    // Get next employee code
-    const { count } = await supabaseAdmin
+    // Get next employee code based on type
+    const prefix = employeeType === 'intern' ? 'TRN' : 'SIL'
+    const { data: lastEmp } = await supabaseAdmin
       .from('employees')
-      .select('*', { count: 'exact', head: true })
+      .select('employee_code')
+      .like('employee_code', prefix + '-%')
+      .order('employee_code', { ascending: false })
+      .limit(1)
+      .single()
 
-    const empCode = `SIL-${String((count || 0) + 1).padStart(3, '0')}`
+    let nextNum = 1
+    if (lastEmp?.employee_code) {
+      const parts = lastEmp.employee_code.split('-')
+      nextNum = parseInt(parts[1] || '0', 10) + 1
+    }
+    const empCode = `${prefix}-${String(nextNum).padStart(6, '0')}`
 
     // Create employee profile
     const { data: employee, error: empError } = await supabaseAdmin
