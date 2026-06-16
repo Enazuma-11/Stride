@@ -11,6 +11,7 @@ import ProfilePage            from './pages/employee/ProfilePage'
 import HRDashboardPage        from './pages/hr/HRDashboardPage'
 import EmployeeManagementPage from './pages/hr/EmployeeManagementPage'
 import HRAttendancePage       from './pages/hr/HRAttendancePage'
+import HRLeaveManagementPage  from './pages/hr/HRLeaveManagementPage'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/hr"             element={<ProtectedRoute requireHR><HRDashboardPage /></ProtectedRoute>} />
           <Route path="/hr/employees"   element={<ProtectedRoute requireHR><EmployeeManagementPage /></ProtectedRoute>} />
           <Route path="/hr/attendance"  element={<ProtectedRoute requireHR><HRAttendancePage /></ProtectedRoute>} />
+          <Route path="/hr/leaves"      element={<ProtectedRoute requireHR><HRLeaveManagementPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

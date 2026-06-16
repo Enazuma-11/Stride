@@ -1,50 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'DM Sans', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
-}
-
-/* Touch-friendly tap targets */
-button, a, [role="button"] {
-  min-height: 44px;
-  cursor: pointer;
-}
-
-button:focus { outline: none; }
-input:focus, select:focus, textarea:focus {
-  outline: 2px solid rgba(29,53,87,0.4);
-  outline-offset: 0;
-}
-
-/* Scrollbars */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+body { font-family: 'Inter', sans-serif; background: #f5f7fa; color: #1a1a2e; -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
+button { cursor: pointer; }
+button:focus, input:focus, select:focus, textarea:focus { outline: 2px solid rgba(0,212,170,0.4); outline-offset: 1px; }
+input, select, textarea { font-size: 16px; }
+@media (min-width: 768px) { input, select, textarea { font-size: 13px; } }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #E4E2DC; border-radius: 4px; }
-
-/* Animations */
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* Smooth scrolling */
-html { scroll-behavior: smooth; }
-
-/* Prevent iOS bounce */
-body { overflow-x: hidden; }
-
-/* Mobile input zoom fix - prevents iOS from zooming on focus */
-@media (max-width: 768px) {
-  input, select, textarea {
-    font-size: 16px !important;
-  }
-}
+::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeUp  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeIn  { from { opacity:0; } to { opacity:1; } }

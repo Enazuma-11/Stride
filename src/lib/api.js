@@ -134,3 +134,171 @@ export async function getAnnouncements() {
   if (error) throw error
   return data
 }
+
+// ─── HR: GET ALL EMPLOYEES' LEAVE BALANCES ────────────────────────────────────
+export async function getAllLeaveBalances() {
+  const { data, error } = await supabase
+    .from('leave_balances')
+    .select(`
+      *,
+      employee:employee_id (id, full_name, avatar_initials, department, employee_type, status)
+    `)
+    .eq('year', new Date().getFullYear())
+    .order('employee_id')
+  if (error) throw error
+  return data || []
+}
+
+// ─── HR: ADD LEAVE DAYS FOR AN EMPLOYEE ──────────────────────────────────────
+export async function hrAdjustLeave(employeeId, leaveType, adjustment, reason, adjustedBy) {
+  const year = new Date().getFullYear()
+
+  // Get current balance
+  const { data: balance, error: fetchErr } = await supabase
+    .from('leave_balances')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .eq('leave_type', leaveType)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (fetchErr) throw fetchErr
+
+  if (balance) {
+    // Update existing balance
+    const newTotal = Math.max(0, balance.total_days + adjustment)
+    const { data, error } = await supabase
+      .from('leave_balances')
+      .update({
+        total_days: newTotal,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', balance.id)
+      .select()
+      .single()
+    if (error) throw error
+
+    // Log the adjustment
+    await logLeaveAdjustment(employeeId, leaveType, adjustment, reason, adjustedBy, balance.total_days, newTotal)
+    return data
+  } else {
+    // Create new balance
+    const newTotal = Math.max(0, adjustment)
+    const { data, error } = await supabase
+      .from('leave_balances')
+      .insert({
+        employee_id: employeeId,
+        leave_type:  leaveType,
+        year,
+        total_days:  newTotal,
+        used_days:   0,
+      })
+      .select()
+      .single()
+    if (error) throw error
+
+    await logLeaveAdjustment(employeeId, leaveType, adjustment, reason, adjustedBy, 0, newTotal)
+    return data
+  }
+}
+
+// ─── HR: SET LEAVE BALANCE DIRECTLY ──────────────────────────────────────────
+export async function hrSetLeaveBalance(employeeId, leaveType, totalDays, reason, adjustedBy) {
+  const year = new Date().getFullYear()
+
+  const { data: existing } = await supabase
+    .from('leave_balances')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .eq('leave_type', leaveType)
+    .eq('year', year)
+    .maybeSingle()
+
+  const oldTotal = existing?.total_days || 0
+
+  const { data, error } = await supabase
+    .from('leave_balances')
+    .upsert({
+      employee_id: employeeId,
+      leave_type:  leaveType,
+      year,
+      total_days:  Math.max(0, totalDays),
+      used_days:   existing?.used_days || 0,
+    }, { onConflict: 'employee_id,leave_type,year' })
+    .select()
+    .single()
+  if (error) throw error
+
+  await logLeaveAdjustment(employeeId, leaveType, totalDays - oldTotal, reason, adjustedBy, oldTotal, totalDays)
+  return data
+}
+
+// ─── LOG LEAVE ADJUSTMENT ─────────────────────────────────────────────────────
+async function logLeaveAdjustment(employeeId, leaveType, adjustment, reason, adjustedBy, oldTotal, newTotal) {
+  await supabase.from('leave_adjustments').insert({
+    employee_id:  employeeId,
+    leave_type:   leaveType,
+    adjustment,
+    reason,
+    adjusted_by:  adjustedBy,
+    old_total:    oldTotal,
+    new_total:    newTotal,
+    year:         new Date().getFullYear(),
+  }).select()
+  // Don't throw — log failure shouldn't break the main operation
+}
+
+// ─── GET LEAVE ADJUSTMENT HISTORY ────────────────────────────────────────────
+export async function getLeaveAdjustmentHistory(employeeId) {
+  const { data, error } = await supabase
+    .from('leave_adjustments')
+    .select(`*, adjuster:adjusted_by(full_name)`)
+    .eq('employee_id', employeeId)
+    .order('created_at', { ascending: false })
+    .limit(20)
+  if (error) throw error
+  return data || []
+}
+
+// ─── HR: RECORD LEAVE ON BEHALF OF EMPLOYEE ──────────────────────────────────
+export async function hrRecordLeave({ employeeId, leaveType, fromDate, toDate, days, reason, recordedBy }) {
+  // Insert leave request as approved
+  const { data: leave, error: leaveErr } = await supabase
+    .from('leave_requests')
+    .insert({
+      employee_id:  employeeId,
+      leave_type:   leaveType,
+      from_date:    fromDate,
+      to_date:      toDate,
+      days,
+      reason:       reason + ` (Recorded by HR)`,
+      status:       'approved',
+      reviewed_by:  recordedBy,
+      reviewed_at:  new Date().toISOString(),
+    })
+    .select()
+    .single()
+  if (leaveErr) throw leaveErr
+
+  // Deduct from leave balance
+  const year = new Date(fromDate).getFullYear()
+  const { data: bal, error: balErr } = await supabase
+    .from('leave_balances')
+    .select('id, used_days, total_days')
+    .eq('employee_id', employeeId)
+    .eq('leave_type', leaveType)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (balErr) throw balErr
+
+  if (bal) {
+    const newUsed = Math.min(bal.total_days, bal.used_days + days)
+    await supabase
+      .from('leave_balances')
+      .update({ used_days: newUsed })
+      .eq('id', bal.id)
+  }
+
+  return leave
+}

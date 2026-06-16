@@ -1,132 +1,117 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { C } from '../../lib/constants'
-import { Avatar } from '../ui'
+import { C, FONTS } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
-import { signOut } from '../../lib/api'
+import { supabase } from '../../lib/supabase'
 
-const NAV_ITEMS = [
-  { icon: '🏠', label: 'Dashboard',        path: '/dashboard'  },
-  { icon: '👤', label: 'My Profile',         path: '/profile'     },
-  { icon: '🏖️', label: 'Leave Management', path: '/leaves'     },
-  { icon: '⏰', label: 'Attendance',        path: '/attendance' },
-  { icon: '💰', label: 'Payslips',          path: '/payslips',  soon: true },
-  { icon: '📁', label: 'Documents',         path: '/documents', soon: true },
-  { icon: '💸', label: 'Expenses',          path: '/expenses',  soon: true },
-  { icon: '👥', label: 'Team Directory',    path: '/team',      soon: true },
+const NAV = [
+  { group: 'MAIN', items: [
+    { icon: '⚡', label: 'Dashboard',        path: '/dashboard'  },
+    { icon: '👤', label: 'My Profile',        path: '/profile'    },
+    { icon: '🏖️', label: 'Leave Management',  path: '/leaves'     },
+    { icon: '⏰', label: 'Attendance',         path: '/attendance' },
+  ]},
+  { group: 'COMING SOON', items: [
+    { icon: '💰', label: 'Payslips',   path: null, soon: true },
+    { icon: '📄', label: 'Documents',  path: null, soon: true },
+    { icon: '🧾', label: 'Expenses',   path: null, soon: true },
+    { icon: '👥', label: 'Team Dir.',  path: null, soon: true },
+  ]},
 ]
 
-const HR_ITEMS = [
-  { icon: '🛡️', label: 'HR Dashboard',       path: '/hr'             },
-  { icon: '👤', label: 'Employee Management', path: '/hr/employees'   },
-  { icon: '⏰', label: 'Attendance Report',   path: '/hr/attendance'  },
-  { icon: '📣', label: 'Announcements',       path: '/announcements', soon: true },
+const HR_NAV = [
+  { group: 'HR & ADMIN', items: [
+    { icon: '🛡️', label: 'HR Dashboard',      path: '/hr'           },
+    { icon: '🧑‍💼', label: 'Employees',          path: '/hr/employees' },
+    { icon: '📊', label: 'Attendance Report', path: '/hr/attendance'},
+    { icon: '🏖️', label: 'Leave Management',  path: '/hr/leaves'    },
+  ]},
 ]
 
 export default function Sidebar() {
   const { employee, isHR } = useAuth()
   const navigate = useNavigate()
 
-  async function handleSignOut() {
-    await signOut()
+  async function handleLogout() {
+    await supabase.auth.signOut()
     navigate('/login')
   }
 
   return (
     <aside style={{
-      width: 240, background: C.brand,
-      minHeight: '100vh', display: 'flex',
-      flexDirection: 'column', flexShrink: 0,
+      width: 230, flexShrink: 0,
+      background: C.surface,
+      borderRight: `1px solid ${C.border}`,
+      boxShadow: '2px 0 12px rgba(26,26,46,0.04)',
+      display: 'flex', flexDirection: 'column',
+      height: '100vh', position: 'sticky', top: 0, overflowY: 'auto',
     }}>
-      <div style={{ padding: '20px 20px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <img src="/logo.png" alt="SporTech" style={{
-            width: 40, height: 40, borderRadius: 8,
-            objectFit: 'contain', background: '#fff', padding: 3,
-            flexShrink: 0,
-          }} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif", lineHeight: 1.1 }}>SporTech</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Innovation Lab Pvt Ltd</div>
-          </div>
+      {/* Logo */}
+      <div style={{ padding: '22px 20px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+          <img src="/logo.png" alt="SporTech" style={{ width: 34, height: 34, objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
         </div>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase' }}>
-          Stride · Employee Portal
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: FONTS.display, lineHeight: 1.1 }}>SporTech</div>
+          <div style={{ fontSize: 9, color: C.textLight, letterSpacing: 1.2, textTransform: 'uppercase' }}>Stride Portal</div>
         </div>
       </div>
 
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '0 20px 8px' }} />
-
-      <nav style={{ padding: '8px 12px', flex: 1, overflowY: 'auto' }}>
-        <NavSection label="Main">
-          {NAV_ITEMS.map(item => <NavItem key={item.path} {...item} />)}
-        </NavSection>
-        {isHR && (
-          <NavSection label="HR & Admin">
-            {HR_ITEMS.map(item => <NavItem key={item.path} {...item} />)}
-          </NavSection>
-        )}
-      </nav>
-
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '0 20px 8px' }} />
-
+      {/* Employee pill */}
       {employee && (
-        <div style={{ padding: '14px 16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <Avatar initials={employee.avatar_initials || '??'} size={34} color={C.accent} />
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {employee.full_name}
-              </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', textTransform: 'capitalize' }}>{employee.role_type}</div>
-            </div>
+        <div style={{ margin: '0 12px 8px', padding: '10px 12px', background: C.bg, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: C.text, fontFamily: FONTS.display, flexShrink: 0 }}>
+            {employee.avatar_initials || '??'}
           </div>
-          <button onClick={handleSignOut} style={{
-            width: '100%', padding: '8px', borderRadius: 7,
-            background: 'rgba(230,57,70,0.15)', border: '1px solid rgba(230,57,70,0.3)',
-            color: '#ff8a8a', fontSize: 12, fontWeight: 600,
-            cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
-          }}>Sign Out</button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: FONTS.display, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{employee.full_name}</div>
+            <div style={{ fontSize: 10, color: C.textLight, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{employee.role}</div>
+          </div>
         </div>
       )}
-    </aside>
-  )
-}
 
-function NavSection({ label, children }) {
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: 2, textTransform: 'uppercase', padding: '0 8px', marginBottom: 4 }}>
-        {label}
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column' }}>
+        {[...NAV, ...(isHR ? HR_NAV : [])].map(group => (
+          <div key={group.group}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: '#b0b8c1', letterSpacing: 1.5, padding: '12px 10px 5px', textTransform: 'uppercase', fontFamily: FONTS.body }}>
+              {group.group}
+            </div>
+            {group.items.map(item => item.soon ? (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, opacity: 0.4, cursor: 'not-allowed', borderLeft: '3px solid transparent' }}>
+                <span style={{ fontSize: 15, width: 18, textAlign: 'center' }}>{item.icon}</span>
+                <span style={{ fontSize: 12, color: C.textLight, fontFamily: FONTS.body, flex: 1 }}>{item.label}</span>
+                <span style={{ fontSize: 9, color: C.teal, background: `${C.teal}18`, padding: '2px 7px', borderRadius: 6, fontWeight: 700, letterSpacing: 0.5 }}>SOON</span>
+              </div>
+            ) : (
+              <NavLink key={item.label} to={item.path} style={({ isActive }) => ({
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 12px', borderRadius: 10, textDecoration: 'none',
+                transition: 'all 0.15s', marginBottom: 1,
+                borderLeft: isActive ? `3px solid ${C.teal}` : '3px solid transparent',
+                background: isActive ? 'linear-gradient(90deg, rgba(0,212,170,0.12), rgba(18,109,173,0.06))' : 'transparent',
+              })}>
+                {({ isActive }) => (
+                  <>
+                    <span style={{ fontSize: 15, width: 18, textAlign: 'center' }}>{item.icon}</span>
+                    <span style={{ fontSize: 12, fontFamily: FONTS.body, fontWeight: isActive ? 600 : 400, color: isActive ? C.brand : C.textLight }}>{item.label}</span>
+                    {isActive && <div style={{ width: 5, height: 5, borderRadius: '50%', background: C.teal, marginLeft: 'auto' }} />}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer */}
+      <div style={{ padding: '10px 12px 20px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ height: 4, borderRadius: 4, background: C.gradientH, marginBottom: 12, opacity: 0.8 }} />
+        <button onClick={handleLogout} style={{ width: '100%', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', borderRadius: 10, cursor: 'pointer', color: C.textLight, fontFamily: FONTS.body, fontSize: 12, transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textLight }}>
+          <span style={{ fontSize: 15 }}>🚪</span> Sign Out
+        </button>
       </div>
-      {children}
-    </div>
-  )
-}
-
-function NavItem({ icon, label, path, soon }) {
-  if (soon) return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '9px 12px', borderRadius: 8, marginBottom: 2,
-      color: 'rgba(255,255,255,0.28)', fontSize: 13, cursor: 'default',
-    }}>
-      <span style={{ fontSize: 14, opacity: 0.5 }}>{icon}</span>
-      {label}
-      <span style={{ marginLeft: 'auto', fontSize: 8, color: 'rgba(255,255,255,0.2)', letterSpacing: 1, textTransform: 'uppercase' }}>Soon</span>
-    </div>
-  )
-  return (
-    <NavLink to={path} style={({ isActive }) => ({
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '9px 12px', borderRadius: 8, marginBottom: 2,
-      textDecoration: 'none', fontSize: 13, fontWeight: isActive ? 600 : 400,
-      background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-      border: isActive ? '1px solid rgba(255,255,255,0.15)' : '1px solid transparent',
-      color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
-      transition: 'all 0.15s',
-    })}>
-      <span style={{ fontSize: 14 }}>{icon}</span>
-      {label}
-    </NavLink>
+    </aside>
   )
 }
