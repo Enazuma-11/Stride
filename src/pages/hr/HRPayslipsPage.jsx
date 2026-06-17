@@ -4,6 +4,7 @@ import { Card, Avatar, Button, Spinner, Alert, EmptyState, Input, Select } from 
 import { C, FONTS } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { getAllPayslips, savePayslip, deletePayslip, calcPayslipTotals, MONTH_NAMES } from '../../lib/api.payslips'
+import { supabase } from '../../lib/supabase'
 import { getAllEmployees } from '../../lib/api'
 import { PayslipDocument, DownloadPayslipButton } from '../../components/PayslipDocument'
 
@@ -55,6 +56,28 @@ function PayslipFormModal({ employees, existing, month, year, onSaved, onClose, 
   const [preview, setPreview] = useState(false)
 
   const set = k => v => setForm(f => ({ ...f, [k]: v }))
+
+  // Auto-populate bank details when employee is selected
+  async function handleEmployeeChange(id) {
+    setEmployeeId(id)
+    if (!id) return
+    try {
+      const { data } = await supabase
+        .from('employee_payroll')
+        .select('bank_name, account_number, ifsc_code, branch_name, account_holder_name')
+        .eq('employee_id', id)
+        .maybeSingle()
+      if (data) {
+        setForm(f => ({
+          ...f,
+          bank_name:      data.bank_name      || '',
+          account_number: data.account_number || '',
+          ifsc_code:      data.ifsc_code      || '',
+          branch_name:    data.branch_name    || '',
+        }))
+      }
+    } catch (e) { console.warn('Could not fetch bank details:', e.message) }
+  }
 
   // Auto-calculate special allowance
   const grossTarget = parseFloat(form.basic || 0) + parseFloat(form.hra || 0) +
@@ -134,7 +157,7 @@ function PayslipFormModal({ employees, existing, month, year, onSaved, onClose, 
             {/* Employee select */}
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6 }}>Employee *</label>
-              <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} disabled={!!existing}
+              <select value={employeeId} onChange={e => handleEmployeeChange(e.target.value)} disabled={!!existing}
                 style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', background: C.surface }}>
                 <option value="">Select employee…</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} — {e.employee_code}</option>)}
