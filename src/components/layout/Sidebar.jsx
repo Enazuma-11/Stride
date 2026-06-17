@@ -9,7 +9,7 @@ const NAV = [
     { icon: '👤', label: 'My Profile',        path: '/profile'    },
     { icon: '🏖️', label: 'Leave Management',  path: '/leaves'     },
     { icon: '⏰', label: 'Attendance',         path: '/attendance' },
-    { icon: '💰', label: 'Payslips',           path: '/payslips'   },
+    { icon: '💰', label: 'Payslips',           path: '/payslips', hrPath: '/hr/payslips' },
     { icon: '📢', label: 'Announcements',      path: '/announcements' },
   ]},
   { group: 'COMING SOON', items: [
@@ -102,7 +102,7 @@ export default function Sidebar() {
                   <span style={{ fontSize: 9, color: C.teal, background: `${C.teal}20`, padding: '2px 7px', borderRadius: 6, fontWeight: 700, letterSpacing: 0.5 }}>SOON</span>
                 </div>
               ) : (
-                <NavLink key={item.label} to={item.path} style={({ isActive }) => ({
+                <NavLink key={item.label} to={(isHR && item.hrPath) ? item.hrPath : item.path} style={({ isActive }) => ({
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 12px', borderRadius: 10, textDecoration: 'none',
                   transition: 'all 0.15s', marginBottom: 1,
