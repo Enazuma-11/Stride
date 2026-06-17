@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, Select, SectionTitle } from '../../components/ui'
+import { supabase } from '../../lib/supabase'
 import { C, EMPLOYEE_TYPES, DEPARTMENTS, ROLE_TYPES, REQUIRES_COMPANY_EMAIL, COMPANY_DOMAIN, GENDERS } from '../../lib/constants'
 import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
@@ -269,6 +270,107 @@ function CreateModal({ onClose, onSuccess }) {
   )
 }
 
+
+// ── Modal: Edit existing employee ─────────────────────────────────────────────
+function EditEmployeeModal({ employee, allEmployees, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    role:       employee.role        || '',
+    roleType:   employee.role_type   || 'employee',
+    employeeType: employee.employee_type || 'permanent',
+    department: employee.department  || '',
+    managerId:  employee.manager_id  || '',
+    joinDate:   employee.join_date   || '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  function set(k) { return v => setForm(f => ({ ...f, [k]: v })) }
+
+  async function submit() {
+    if (!form.role.trim())       { setError('Role is required.');       return }
+    if (!form.department.trim()) { setError('Department is required.'); return }
+    setLoading(true); setError('')
+    try {
+      const { data, error: err } = await supabase
+        .from('employees')
+        .update({
+          role:          form.role,
+          role_type:     form.roleType,
+          employee_type: form.employeeType,
+          department:    form.department,
+          manager_id:    form.managerId || null,
+          join_date:     form.joinDate  || null,
+          updated_at:    new Date().toISOString(),
+        })
+        .eq('id', employee.id)
+        .select('*, manager:manager_id(id, full_name, role)')
+        .single()
+      if (err) throw err
+      onSaved(data)
+      onClose()
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <Modal title={`Edit — ${employee.full_name}`} subtitle="Update role, department, manager and more." onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.surfaceAlt, borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
+        <Avatar initials={employee.avatar_initials || '??'} size={38} />
+        <div>
+          <div style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{employee.full_name}</div>
+          <div style={{ fontSize: 12, color: C.textLight }}>{employee.email} · {employee.employee_code}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <TypeSelector value={form.employeeType} onChange={set('employeeType')} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Input label="Job Title / Role" value={form.role} onChange={set('role')} placeholder="e.g. Full Stack Developer" required />
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6 }}>
+              Department <span style={{ color: C.accent }}>*</span>
+            </label>
+            <select value={form.department} onChange={e => set('department')(e.target.value)}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, fontSize: 13, color: C.text, outline: 'none' }}>
+              <option value="">Select…</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Select label="Role Type" value={form.roleType} onChange={set('roleType')} options={ROLE_TYPES} required />
+          <Input label="Join Date" type="date" value={form.joinDate} onChange={set('joinDate')} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6 }}>
+            Reporting Manager
+          </label>
+          <select value={form.managerId} onChange={e => set('managerId')(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, fontSize: 13, color: C.text, outline: 'none' }}>
+            <option value="">No manager assigned</option>
+            {allEmployees
+              .filter(e => e.id !== employee.id && e.status === 'active')
+              .map(e => (
+                <option key={e.id} value={e.id}>{e.full_name} — {e.role}</option>
+              ))
+            }
+          </select>
+        </div>
+      </div>
+
+      {error && <div style={{ marginTop: 14 }}><Alert type="error" message={error} /></div>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button onClick={submit} disabled={loading}>
+          {loading ? 'Saving…' : '✓ Save Changes'}
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Manager selector component ───────────────────────────────────────────────
 function ManagerSelector({ value, onChange, excludeId }) {
   const [managers, setManagers] = useState([])
@@ -413,10 +515,11 @@ function PendingBanner({ pending, onApproveClick, onReject }) {
 }
 
 // ── Employee table ────────────────────────────────────────────────────────────
-function EmployeeTable({ employees, onResendInvite, onDeactivate }) {
+function EmployeeTable({ employees, onResendInvite, onDeactivate, onEmployeeUpdated }) {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('active')
+  const [editingEmployee, setEditingEmployee] = useState(null)
 
   const filtered = employees
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
@@ -515,6 +618,7 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate }) {
                         {emp.onboarding_status === 'invited' && (
                           <Button variant="outline" size="sm" onClick={() => onResendInvite(emp.email)}>Resend</Button>
                         )}
+                        <Button variant="outline" size="sm" onClick={() => setEditingEmployee(emp)}>✏️ Edit</Button>
                         {emp.status === 'active' && (
                           <Button variant="ghost" size="sm" onClick={() => onDeactivate(emp.id)}>Deactivate</Button>
                         )}
@@ -644,6 +748,7 @@ export default function EmployeeManagementPage() {
         employees={employees}
         onResendInvite={handleResendInvite}
         onDeactivate={handleDeactivate}
+        onEmployeeUpdated={(updated) => setEmployees(emps => emps.map(e => e.id === updated.id ? updated : e))}
       />
 
       {modal === 'invite'  && <InviteModal  onClose={() => setModal(null)} onSuccess={handleSuccess} />}
