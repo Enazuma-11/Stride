@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import OnboardingFormFull from '../OnboardingFormFull'
 import { useAuth } from '../../context/AuthContext'
 import { C } from '../../lib/constants'
 import { Spinner } from '../ui'
@@ -69,6 +70,16 @@ export function ProtectedRoute({ children, requireHR = false }) {
         </div>
       </div>
     )
+  }
+
+  // First-time employee — show onboarding form
+  if (
+    employee &&
+    employee.onboarding_status === 'active' &&
+    !employee.onboarding_form_submitted &&
+    employee.role_type === 'employee'
+  ) {
+    return <OnboardingFormFull />
   }
 
   // Rejected registration
