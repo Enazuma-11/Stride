@@ -9,9 +9,11 @@ const NAV = [
     { icon: '👤', label: 'My Profile',        path: '/profile'    },
     { icon: '🏖️', label: 'Leave Management',  path: '/leaves'     },
     { icon: '⏰', label: 'Attendance',         path: '/attendance' },
+    { icon: '💰', label: 'Payslips',           path: '/payslips'   },
+    { icon: '📢', label: 'Announcements',      path: '/announcements' },
   ]},
   { group: 'COMING SOON', items: [
-    { icon: '💰', label: 'Payslips',   path: null, soon: true },
+
     { icon: '📄', label: 'Documents',  path: null, soon: true },
     { icon: '🧾', label: 'Expenses',   path: null, soon: true },
     { icon: '👥', label: 'Team Dir.',  path: null, soon: true },
@@ -24,6 +26,7 @@ const HR_NAV = [
     { icon: '🧑‍💼', label: 'Employees',          path: '/hr/employees' },
     { icon: '📊', label: 'Attendance Report', path: '/hr/attendance'},
     { icon: '🏖️', label: 'Leave Management',  path: '/hr/leaves'    },
+    { icon: '💰', label: 'Payslips',          path: '/hr/payslips' },
   ]},
 ]
 

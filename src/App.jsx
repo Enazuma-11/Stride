@@ -1,4 +1,7 @@
-import PWAInstallPrompt from './components/PWAInstallPrompt'
+import PWAInstallPrompt     from './components/PWAInstallPrompt'
+import PayslipsPage          from './pages/employee/PayslipsPage'
+import AnnouncementsPage     from './pages/employee/AnnouncementsPage'
+import HRPayslipsPage        from './pages/hr/HRPayslipsPage'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
@@ -32,6 +35,9 @@ export default function App() {
           <Route path="/hr/employees"   element={<ProtectedRoute requireHR><EmployeeManagementPage /></ProtectedRoute>} />
           <Route path="/hr/attendance"  element={<ProtectedRoute requireHR><HRAttendancePage /></ProtectedRoute>} />
           <Route path="/hr/leaves"      element={<ProtectedRoute requireHR><HRLeaveManagementPage /></ProtectedRoute>} />
+          <Route path="/hr/payslips"    element={<ProtectedRoute requireHR><HRPayslipsPage /></ProtectedRoute>} />
+          <Route path="/payslips"        element={<ProtectedRoute><PayslipsPage /></ProtectedRoute>} />
+          <Route path="/announcements"   element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
