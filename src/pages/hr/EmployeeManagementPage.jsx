@@ -530,6 +530,7 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate, onEmployeeUpda
     )
 
   return (
+    <>
     <Card padding="0">
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -632,6 +633,15 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate, onEmployeeUpda
         )
       }
     </Card>
+    {editingEmployee && (
+      <EditEmployeeModal
+        employee={editingEmployee}
+        allEmployees={employees}
+        onClose={() => setEditingEmployee(null)}
+        onSaved={(updated) => { onEmployeeUpdated?.(updated); setEditingEmployee(null) }}
+      />
+    )}
+  </>
   )
 }
 
