@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import EmployeeICard from '../../components/EmployeeICard'
+import { TwoFactorSetup } from '../../components/TwoFactorAuth'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, Alert, Input, Select, Textarea, SectionTitle } from '../../components/ui'
 import { C, GENDERS, DEPARTMENTS, EMPLOYEE_TYPES } from '../../lib/constants'
@@ -20,6 +21,7 @@ import {
 
 const SECTION_TABS = [
   { id: 'personal',   label: '👤 Personal',    free: true  },
+  { id: 'security',   label: '🔐 Security',     free: true  },
   { id: 'work',       label: '💼 Work',         free: false },
   { id: 'contact',    label: '📞 Contact',      free: true  },
   { id: 'payroll',    label: '💰 Payroll',      free: false },
@@ -961,6 +963,12 @@ export default function ProfilePage() {
         onDeleteLang={async id => { await deleteLanguage(id); await load() }}
       />}
       {tab === 'exit'       && <ExitSection        exit={exit} isHR={isHR} employeeId={me.id} onUpdate={handleUpdate} />}
+      {tab === 'security'   && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>Security Settings</div>
+          <TwoFactorSetup />
+        </div>
+      )}
     </AppShell>
   )
 }

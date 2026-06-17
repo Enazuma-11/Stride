@@ -52,7 +52,7 @@ export default function PWAInstallPrompt() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 80, left: 12, right: 12, zIndex: 9999,
+      position: 'fixed', bottom: 80, left: 12, right: 12, zIndex: 1500,
       background: '#1a0f2e',
       borderRadius: 16, padding: '16px 18px',
       boxShadow: '0 8px 32px rgba(0,0,0,0.4)',

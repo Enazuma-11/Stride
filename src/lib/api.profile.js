@@ -255,12 +255,15 @@ export async function uploadProfilePhoto(employeeId, file) {
   if (!file.type.startsWith('image/')) throw new Error('Please upload an image file (JPG, PNG, etc.)')
   if (file.size > 5 * 1024 * 1024)    throw new Error('Image must be under 5MB')
 
-  const ext  = file.name.split('.').pop().toLowerCase()
-  const path = `${employeeId}/profile/photo.${ext}`
+  // Always use .jpg extension to avoid path mismatch issues
+  const path = `${employeeId}/profile/photo.jpg`
+
+  // Remove old photo first to avoid conflicts
+  await supabase.storage.from('employee-documents').remove([path]).catch(() => {})
 
   const { error: upErr } = await supabase.storage
     .from('employee-documents')
-    .upload(path, file, { upsert: true, contentType: file.type })
+    .upload(path, file, { upsert: true, contentType: 'image/jpeg' })
 
   if (upErr) {
     if (upErr.message?.includes('Bucket not found') || upErr.message?.includes('bucket')) {
@@ -269,22 +272,42 @@ export async function uploadProfilePhoto(employeeId, file) {
     throw upErr
   }
 
-  // Use signed URL (works for private buckets)
+  // Generate signed URL with 1 year expiry
   const { data: signedData, error: signErr } = await supabase.storage
     .from('employee-documents')
-    .createSignedUrl(path, 60 * 60 * 24 * 365) // 1 year expiry
+    .createSignedUrl(path, 60 * 60 * 24 * 365)
 
   if (signErr) throw signErr
-
   const photoUrl = signedData.signedUrl
 
+  // Update using user_id to satisfy RLS policy
+  const { data: { user } } = await supabase.auth.getUser()
   const { error: updateErr } = await supabase
     .from('employees')
     .update({ profile_photo_url: photoUrl })
-    .eq('id', employeeId)
+    .eq('user_id', user.id)
   if (updateErr) throw updateErr
 
   return photoUrl
+}
+
+// Refresh a stored signed URL if it might be expiring
+export async function refreshProfilePhotoUrl(employeeId, existingUrl) {
+  if (!existingUrl) return null
+  try {
+    // Extract path from signed URL
+    const urlObj = new URL(existingUrl)
+    const pathMatch = urlObj.pathname.match(/\/object\/sign\/employee-documents\/(.+)/)
+    if (!pathMatch) return existingUrl
+
+    const path = decodeURIComponent(pathMatch[1])
+    const { data, error } = await supabase.storage
+      .from('employee-documents')
+      .createSignedUrl(path, 60 * 60 * 24 * 365)
+
+    if (error) return existingUrl
+    return data.signedUrl
+  } catch { return existingUrl }
 }
 
 // ─── ATTENDANCE OVERRIDE (HR only) ────────────────────────────────────────────

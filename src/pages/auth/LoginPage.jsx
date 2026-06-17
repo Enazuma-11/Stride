@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { C, FONTS } from '../../lib/constants'
 import { Alert, Spinner, GlobalFonts } from '../../components/ui'
+import { TwoFactorVerify } from '../../components/TwoFactorAuth'
 import { useResponsive } from '../../lib/responsive'
 
 export default function LoginPage() {
@@ -12,13 +13,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
+  const [needs2FA, setNeeds2FA] = useState(false)
 
   async function handleLogin() {
     if (!email || !password) { setError('Please enter your email and password.'); return }
     setLoading(true); setError('')
     try {
-      const { error: e } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error: e } = await supabase.auth.signInWithPassword({ email, password })
       if (e) throw e
+      // Check if 2FA is required
+      const { data: mfaData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (mfaData?.nextLevel === 'aal2' && mfaData?.currentLevel === 'aal1') {
+        setNeeds2FA(true)
+        return
+      }
       navigate('/dashboard')
     } catch (e) {
       setError(e.message === 'Invalid login credentials' ? 'Incorrect email or password.' : e.message)
@@ -42,6 +50,8 @@ export default function LoginPage() {
     boxShadow: loading ? 'none' : C.shadowTeal,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   }
+
+  if (needs2FA) return <TwoFactorVerify onVerified={() => navigate('/dashboard')} onCancel={() => { setNeeds2FA(false); supabase.auth.signOut() }} />
 
   const dark = r.isMobile
 
