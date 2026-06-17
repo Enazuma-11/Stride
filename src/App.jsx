@@ -1,5 +1,7 @@
 import PWAInstallPrompt     from './components/PWAInstallPrompt'
 import TeamDirectoryPage     from './pages/employee/TeamDirectoryPage'
+import PolicyCentrePage      from './pages/employee/PolicyCentrePage'
+import ChatPage              from './pages/employee/ChatPage'
 import PerformancePage       from './pages/employee/PerformancePage'
 import PayslipsPage          from './pages/employee/PayslipsPage'
 import AnnouncementsPage     from './pages/employee/AnnouncementsPage'
@@ -42,6 +44,8 @@ export default function App() {
           <Route path="/announcements"   element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
           <Route path="/team"             element={<ProtectedRoute><TeamDirectoryPage /></ProtectedRoute>} />
           <Route path="/performance"      element={<ProtectedRoute><PerformancePage /></ProtectedRoute>} />
+          <Route path="/policies"          element={<ProtectedRoute><PolicyCentrePage /></ProtectedRoute>} />
+          <Route path="/chat"              element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

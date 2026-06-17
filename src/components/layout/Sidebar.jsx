@@ -19,6 +19,8 @@ const NAV = [
   { group: 'TEAM', items: [
     { icon: '👥', label: 'Team Directory', path: '/team' },
     { icon: '🎯', label: 'Performance',   path: '/performance' },
+    { icon: '💬', label: 'Chat',          path: '/chat'        },
+    { icon: '📋', label: 'Policy Centre', path: '/policies'    },
   ]},
 ]
 
