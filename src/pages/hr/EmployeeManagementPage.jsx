@@ -269,6 +269,32 @@ function CreateModal({ onClose, onSuccess }) {
   )
 }
 
+// ── Manager selector component ───────────────────────────────────────────────
+function ManagerSelector({ value, onChange, excludeId }) {
+  const [managers, setManagers] = useState([])
+  useEffect(() => {
+    supabase.from('employees')
+      .select('id, full_name, role, employee_code')
+      .eq('status', 'active')
+      .in('role_type', ['admin', 'hr'])
+      .order('full_name')
+      .then(({ data }) => setManagers(data || []))
+  }, [])
+
+  return (
+    <div>
+      <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6 }}>Reporting Manager</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, fontSize: 13, color: C.text, outline: 'none' }}>
+        <option value="">No manager assigned</option>
+        {managers.filter(m => m.id !== excludeId).map(m => (
+          <option key={m.id} value={m.id}>{m.full_name} — {m.role}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 // ── Modal: Approve self-registered employee ───────────────────────────────────
 function ApproveModal({ employee, onClose, onApproved }) {
   const [form, setForm] = useState({
@@ -335,6 +361,8 @@ function ApproveModal({ employee, onClose, onApproved }) {
         {form.employeeType === 'intern' && (
           <Input label="Internship End Date" type="date" value={form.internshipEndDate} onChange={set('internshipEndDate')} />
         )}
+
+        <ManagerSelector value={form.managerId} onChange={set('managerId')} excludeId={employee.id} />
       </div>
 
       {error && <div style={{ marginTop: 14 }}><Alert type="error" message={error} /></div>}
