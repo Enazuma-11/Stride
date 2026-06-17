@@ -443,7 +443,7 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate }) {
           />
           {/* Employee type filter */}
           <div style={{ display: 'flex', gap: 4 }}>
-            {[{ value: 'all', label: 'All types' }, ...EMPLOYEE_TYPES.map(t => ({ value: t.value, label: t.icon + ' ' + t.label }))].map(f => (
+            {[{ value: 'all', label: 'All types' }, ...EMPLOYEE_TYPES.map(t => ({ value: t.value, label: t.label }))].map(f => (
               <button key={f.value} onClick={() => setTypeFilter(f.value)} style={{
                 padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                 border: typeFilter === f.value ? `1.5px solid ${C.brand}` : `1px solid ${C.border}`,

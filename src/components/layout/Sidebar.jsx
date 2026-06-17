@@ -13,10 +13,12 @@ const NAV = [
     { icon: '📢', label: 'Announcements',      path: '/announcements' },
   ]},
   { group: 'COMING SOON', items: [
-
     { icon: '📄', label: 'Documents',  path: null, soon: true },
     { icon: '🧾', label: 'Expenses',   path: null, soon: true },
-    { icon: '👥', label: 'Team Dir.',  path: null, soon: true },
+  ]},
+  { group: 'TEAM', items: [
+    { icon: '👥', label: 'Team Directory', path: '/team' },
+    { icon: '🎯', label: 'Performance',   path: '/performance' },
   ]},
 ]
 
