@@ -97,10 +97,18 @@ function PolicyCard({ policy, isHR, isAcknowledged, onAcknowledge, onPublish, on
   )
 }
 
-function AddPolicyModal({ categories, onClose, onAdded, publishedBy }) {
+function AddPolicyModal({ categories: propCategories, onClose, onAdded, publishedBy }) {
+  const [categories,  setCategories]  = useState(propCategories || [])
   const [title,       setTitle]       = useState('')
   const [description, setDescription] = useState('')
-  const [categoryId,  setCategoryId]  = useState(categories[0]?.id || '')
+  const [categoryId,  setCategoryId]  = useState('')
+
+  useEffect(() => {
+    getPolicyCategories().then(cats => {
+      setCategories(cats)
+      if (cats.length > 0 && !categoryId) setCategoryId(cats[0].id)
+    })
+  }, [])
   const [version,     setVersion]     = useState('1.0')
   const [requiresAck, setRequiresAck] = useState(false)
   const [file,        setFile]        = useState(null)
