@@ -704,74 +704,128 @@ function SkillsSection({ skills, certifications, languages, employeeId, onAddSki
 function ExitSection({ exit, isHR, employeeId, onUpdate }) {
   const r = useResponsive()
   const e = exit || {}
-  const [form, setForm] = useState({
-    last_working_day: e.last_working_day || '',
-    notice_period_followed: e.notice_period_followed || false,
+
+  // ── Employee: Submit resignation ──────────────────────────────────────────
+  const [resForm, setResForm] = useState({
+    resignation_date:   e.resignation_date   || '',
+    last_working_date:  e.last_working_date  || '',
     reason_for_leaving: e.reason_for_leaving || '',
-    it_assets_returned: e.it_assets_returned || false,
-    accounts_deactivated: e.accounts_deactivated || false,
+    notice_period_followed: e.notice_period_followed || false,
+  })
+  const setRes = k => v => setResForm(f => ({ ...f, [k]: v }))
+  const [resSaving, setResSaving] = useState(false)
+  const [resSuccess, setResSuccess] = useState(false)
+
+  async function submitResignation() {
+    setResSaving(true)
+    try {
+      await onUpdate('exit', resForm)
+      setResSuccess(true)
+    } finally { setResSaving(false) }
+  }
+
+  // ── HR: Exit process checklist ────────────────────────────────────────────
+  const [hrForm, setHrForm] = useState({
+    last_working_day:         e.last_working_day         || '',
+    it_assets_returned:       e.it_assets_returned       || false,
+    accounts_deactivated:     e.accounts_deactivated     || false,
     handover_notes_completed: e.handover_notes_completed || false,
     exit_interview_completed: e.exit_interview_completed || false,
-    exit_interview_notes: e.exit_interview_notes || '',
+    exit_interview_notes:     e.exit_interview_notes     || '',
   })
-  function set(k) { return v => setForm(f => ({ ...f, [k]: v })) }
+  const setHr = k => v => setHrForm(f => ({ ...f, [k]: v }))
 
   const checklist = [
-    { key: 'it_assets_returned',        label: 'IT Assets Returned'           },
-    { key: 'accounts_deactivated',      label: 'Corporate Accounts Deactivated'},
-    { key: 'handover_notes_completed',  label: 'Handover Notes Completed'      },
-    { key: 'exit_interview_completed',  label: 'Exit Interview Completed'       },
+    { key: 'it_assets_returned',        label: 'IT Assets Returned'            },
+    { key: 'accounts_deactivated',      label: 'Corporate Accounts Deactivated' },
+    { key: 'handover_notes_completed',  label: 'Handover Notes Completed'       },
+    { key: 'exit_interview_completed',  label: 'Exit Interview Completed'        },
   ]
 
+  if (!isHR) {
+    // Employee view
+    const hasResigned = !!e.resignation_date
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {hasResigned ? (
+          <div style={{ background: C.amberSoft, border: `1px solid ${C.amber}30`, borderRadius: 12, padding: '16px 20px' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>🚪 Resignation Submitted</div>
+            <FieldRow label="Resignation Date"   value={new Date(e.resignation_date).toLocaleDateString('en-IN')} />
+            <FieldRow label="Last Working Date"  value={e.last_working_date ? new Date(e.last_working_date).toLocaleDateString('en-IN') : 'TBD'} />
+            <FieldRow label="Reason"             value={e.reason_for_leaving} />
+            <div style={{ fontSize: 12, color: '#92400e', marginTop: 8 }}>HR will be in touch to complete the exit process.</div>
+          </div>
+        ) : (
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: '20px' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 4 }}>Submit Resignation</div>
+            <div style={{ fontSize: 12, color: C.textLight, marginBottom: 16 }}>Once submitted, HR will be notified and will reach out to complete the exit process.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                <Input label="Resignation Date" type="date" value={resForm.resignation_date} onChange={setRes('resignation_date')} required />
+                <Input label="Last Working Date" type="date" value={resForm.last_working_date} onChange={setRes('last_working_date')} />
+              </div>
+              <Select label="Reason for Leaving" value={resForm.reason_for_leaving} onChange={setRes('reason_for_leaving')}
+                options={[
+                  {value:'',label:'Select…'},
+                  {value:'better_opportunity',label:'Better Opportunity'},
+                  {value:'personal_reasons',label:'Personal Reasons'},
+                  {value:'higher_education',label:'Higher Education'},
+                  {value:'relocation',label:'Relocation'},
+                  {value:'compensation',label:'Compensation'},
+                  {value:'end_of_internship',label:'End of Internship'},
+                  {value:'other',label:'Other'},
+                ]} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={resForm.notice_period_followed} onChange={e => setRes('notice_period_followed')(e.target.checked)} style={{ accentColor: C.brand }} />
+                I will serve the notice period
+              </label>
+              {resSuccess && <Alert type="success" message="Resignation submitted. HR has been notified." />}
+              <button onClick={submitResignation} disabled={resSaving || !resForm.resignation_date}
+                style={{ padding: '11px 20px', borderRadius: 10, border: 'none', background: resSaving || !resForm.resignation_date ? C.border : '#ef4444', color: resSaving || !resForm.resignation_date ? C.textLight : '#fff', fontSize: 13, fontWeight: 700, fontFamily: FONTS.display, cursor: resSaving || !resForm.resignation_date ? 'not-allowed' : 'pointer' }}>
+                {resSaving ? 'Submitting…' : '🚪 Submit Resignation'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // HR view
   return (
-    <SectionCard title="Separation & Exit Details" subtitle="HR manages exit process" isFree={isHR} isHR={isHR}
-      onSave={() => onUpdate('exit', form)}
+    <SectionCard title="Exit Process" subtitle="Manage employee separation" isFree={true} isHR={true}
+      onSave={() => onUpdate('exit', { ...hrForm, reason_for_leaving: e.reason_for_leaving, resignation_date: e.resignation_date, last_working_date: e.last_working_date })}
       editChildren={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Input label="Last Working Day" type="date" value={form.last_working_day} onChange={set('last_working_day')} />
-            <Select label="Reason for Leaving" value={form.reason_for_leaving} onChange={set('reason_for_leaving')}
-              options={[
-                {value:'',label:'Select…'},
-                {value:'resignation',label:'Resignation'},
-                {value:'retirement',label:'Retirement'},
-                {value:'end_of_contract',label:'End of Contract'},
-                {value:'termination',label:'Termination'},
-                {value:'redundancy',label:'Redundancy'},
-                {value:'other',label:'Other'},
-              ]} />
-          </div>
+          <Input label="Confirmed Last Working Day" type="date" value={hrForm.last_working_day} onChange={setHr('last_working_day')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={form.notice_period_followed} onChange={e => set('notice_period_followed')(e.target.checked)} />
-              Notice Period Followed
-            </label>
             {checklist.map(({ key, label }) => (
               <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-                <input type="checkbox" checked={form[key]} onChange={e => set(key)(e.target.checked)} />
+                <input type="checkbox" checked={hrForm[key]} onChange={ev => setHr(key)(ev.target.checked)} style={{ accentColor: C.brand }} />
                 {label}
               </label>
             ))}
           </div>
-          <Textarea label="Exit Interview Notes" value={form.exit_interview_notes} onChange={set('exit_interview_notes')} rows={3} placeholder="Summary of exit interview…" />
+          <Textarea label="Exit Interview Notes" value={hrForm.exit_interview_notes} onChange={setHr('exit_interview_notes')} rows={3} placeholder="Summary of exit interview…" />
         </div>
       }
     >
-      {!e.last_working_day ? (
-        <div style={{ fontSize: 13, color: C.textLight, padding: '12px 0' }}>No exit process initiated.</div>
+      {!e.resignation_date && !e.last_working_day ? (
+        <div style={{ fontSize: 13, color: C.textLight, padding: '12px 0' }}>No exit process initiated by employee.</div>
       ) : (
         <>
-          <FieldRow label="Last Working Day"      value={e.last_working_day ? new Date(e.last_working_day).toLocaleDateString('en-IN') : null} />
-          <FieldRow label="Reason"                value={e.reason_for_leaving} />
-          <FieldRow label="Notice Period"         value={e.notice_period_followed ? 'Followed' : 'Not followed'} />
+          {e.resignation_date && <FieldRow label="Resignation Date"  value={new Date(e.resignation_date).toLocaleDateString('en-IN')} />}
+          {e.last_working_date && <FieldRow label="Last Working Date" value={new Date(e.last_working_date).toLocaleDateString('en-IN')} />}
+          <FieldRow label="Reason" value={e.reason_for_leaving} />
           <div style={{ marginTop: 12 }}>
             {checklist.map(({ key, label }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13 }}>
-                <span style={{ color: e[key] ? C.green : C.accent }}>{e[key] ? '✅' : '⬜'}</span>
+                <span>{e[key] ? '✅' : '⬜'}</span>
                 <span style={{ color: e[key] ? C.text : C.textMid }}>{label}</span>
               </div>
             ))}
           </div>
+          {e.exit_interview_notes && <FieldRow label="Interview Notes" value={e.exit_interview_notes} />}
         </>
       )}
     </SectionCard>

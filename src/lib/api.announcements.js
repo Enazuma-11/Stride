@@ -27,6 +27,27 @@ export async function createAnnouncement({ title, body, category = 'general', pi
     .select(`*, posted_by:posted_by(id, full_name, avatar_initials, role)`)
     .single()
   if (error) throw error
+
+  // Notify all active employees
+  try {
+    const { data: emps } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('status', 'active')
+      .neq('id', postedBy)
+
+    if (emps?.length) {
+      await supabase.from('notifications').insert(
+        emps.map(e => ({
+          employee_id: e.id,
+          type: 'announcement',
+          title: `📢 ${title}`,
+          message: body.length > 100 ? body.substring(0, 100) + '...' : body,
+        }))
+      )
+    }
+  } catch (e) { console.warn('Notification send failed:', e.message) }
+
   return data
 }
 

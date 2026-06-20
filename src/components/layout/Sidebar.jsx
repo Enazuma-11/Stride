@@ -42,7 +42,7 @@ export default function Sidebar() {
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    navigate('/login')
+    window.location.href = '/login'
   }
 
   return (
@@ -71,7 +71,7 @@ export default function Sidebar() {
       </div>
 
       {/* ── DARK PURPLE: Employee pill + nav + footer ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: DARK, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: DARK, position: 'relative', overflow: 'hidden', overflowY: 'auto' }}>
         {/* Ambient gradient orbs */}
         <div style={{ position: 'absolute', width: 220, height: 220, borderRadius: '50%', top: -60, right: -60, background: 'radial-gradient(circle,rgba(155,117,241,0.2),transparent)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', bottom: 60, left: -50, background: 'radial-gradient(circle,rgba(0,212,170,0.12),transparent)', pointerEvents: 'none' }} />

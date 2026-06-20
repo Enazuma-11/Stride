@@ -119,6 +119,18 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
       p_year:        new Date(leave.from_date).getFullYear(),
     })
   }
+
+  // Notify employee of decision
+  try {
+    const emoji = status === 'approved' ? '✅' : '❌'
+    await supabase.from('notifications').insert({
+      employee_id: data.employee_id,
+      type:  status === 'approved' ? 'leave_approved' : 'leave_rejected',
+      title: `${emoji} Leave ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+      message: `Your ${data.leave_type} leave request has been ${status}.`,
+    })
+  } catch (e) { console.warn('Leave notification failed:', e.message) }
+
   return data
 }
 

@@ -226,13 +226,13 @@ export default function ChatPage() {
   // Realtime subscription
   useEffect(() => {
     if (!activeChat) return
-    const filter = activeChat.type === 'channel'
-      ? `channel_id=eq.${activeChat.id}`
-      : `conversation_id=eq.${activeChat.id}`
-
     const sub = supabase.channel(`chat-${activeChat.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter },
-        () => loadMessages(activeChat))
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'chat_messages',
+        filter: activeChat.type === 'channel'
+          ? `channel_id=eq.${activeChat.id}`
+          : `conversation_id=eq.${activeChat.id}`
+      }, () => loadMessages(activeChat))
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [activeChat?.id])

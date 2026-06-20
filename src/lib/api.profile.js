@@ -222,21 +222,26 @@ export async function deleteLanguage(id) {
 
 // ─── DOCUMENT UPLOAD ──────────────────────────────────────────────────────────
 export async function uploadDocument(employeeId, file, docType, uploadedBy) {
-  const ext      = file.name.split('.').pop()
-  const path     = `${employeeId}/${docType}/${Date.now()}.${ext}`
-  const { error: upErr } = await supabase.storage.from('employee-documents').upload(path, file)
+  const ext  = file.name.split('.').pop()
+  const path = `${employeeId}/documents/${docType}-${Date.now()}.${ext}`
+
+  const { error: upErr } = await supabase.storage
+    .from('employee-documents')
+    .upload(path, file, { upsert: true })
   if (upErr) throw upErr
 
-  const { data: { publicUrl } } = supabase.storage.from('employee-documents').getPublicUrl(path)
+  const { data: signed, error: signErr } = await supabase.storage
+    .from('employee-documents')
+    .createSignedUrl(path, 60 * 60 * 24 * 365)
+  if (signErr) throw signErr
 
-  const { data, error } = await supabase.from('employee_documents').insert({
-    employee_id: employeeId,
-    doc_type:    docType,
-    doc_name:    file.name,
-    file_url:    publicUrl,
-    file_size:   file.size,
-    uploaded_by: uploadedBy,
-  }).select().single()
+  const { data, error } = await supabase.from('employee_documents').upsert({
+    employee_id:   employeeId,
+    document_type: docType,
+    file_url:      signed.signedUrl,
+    file_name:     file.name,
+    uploaded_at:   new Date().toISOString(),
+  }, { onConflict: 'employee_id,document_type' }).select().single()
   if (error) throw error
   return data
 }
