@@ -408,17 +408,34 @@ export default function HRLeaveManagementPage() {
   const r = useResponsive()
   const [employees,  setEmployees]  = useState([])
   const [balances,   setBalances]   = useState([])
+  const [pending,    setPending]    = useState([])
   const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
   const [editEmp,    setEditEmp]    = useState(null)
   const [showRecord, setShowRecord] = useState(false)
+  const [decisionLoading, setDecisionLoading] = useState(null)
 
   async function load() {
     try {
-      const [emps, bals] = await Promise.all([getAllEmployees(), getAllLeaveBalances()])
+      const [emps, bals, reqs] = await Promise.all([
+        getAllEmployees(),
+        getAllLeaveBalances(),
+        getAllLeaveRequests(),
+      ])
       setEmployees(emps.filter(e => e.status === 'active'))
       setBalances(bals)
+      setPending(reqs.filter(r => r.status === 'pending'))
     } finally { setLoading(false) }
+  }
+
+  async function handleDecision(leaveId, status) {
+    setDecisionLoading(leaveId)
+    try {
+      const updated = await updateLeaveStatus(leaveId, status, me.id)
+      await notifyLeaveDecision(updated, updated.employee_id, status)
+      load()
+    } catch (e) { alert(e.message) }
+    finally { setDecisionLoading(null) }
   }
 
   useEffect(() => { load() }, [])
@@ -452,6 +469,50 @@ export default function HRLeaveManagementPage() {
           onSaved={load}
           onClose={() => setEditEmp(null)}
         />
+      )}
+
+      {/* Pending leave requests */}
+      {pending.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 12 }}>
+            🏖️ Pending Leave Requests ({pending.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pending.map(req => {
+              const emp = employees.find(e => e.id === req.employee_id)
+              const lt  = LEAVE_TYPES.find(t => t.id === req.leave_type)
+              return (
+                <div key={req.id} style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.gradientH, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: C.text, flexShrink: 0 }}>
+                    {emp?.avatar_initials || '??'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{emp?.full_name || 'Unknown'}</div>
+                    <div style={{ fontSize: 12, color: C.textLight }}>
+                      {lt?.label || req.leave_type} · {req.from_date} → {req.to_date} · <strong>{req.days} day{req.days !== 1 ? 's' : ''}</strong>
+                      {req.is_half_day && <span style={{ marginLeft: 6, fontSize: 10, color: C.teal, fontWeight: 700 }}>HALF DAY</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textLight, marginTop: 2 }}>"{req.reason}"</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => handleDecision(req.id, 'approved')}
+                      disabled={decisionLoading === req.id}
+                      style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: C.green, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: FONTS.display }}>
+                      {decisionLoading === req.id ? '…' : '✓ Approve'}
+                    </button>
+                    <button
+                      onClick={() => handleDecision(req.id, 'rejected')}
+                      disabled={decisionLoading === req.id}
+                      style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid #ef4444`, background: 'transparent', color: '#ef4444', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: FONTS.display }}>
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {/* Summary cards */}

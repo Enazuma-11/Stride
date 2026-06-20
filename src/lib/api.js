@@ -135,6 +135,53 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
   return data
 }
 
+// ─── CANCEL LEAVE ────────────────────────────────────────────────────────────
+
+export async function cancelLeave(leaveId, employeeId) {
+  const { data: leave, error: fetchErr } = await supabase
+    .from('leave_requests')
+    .select('*')
+    .eq('id', leaveId)
+    .single()
+  if (fetchErr) throw fetchErr
+
+  // Restore balance if leave was approved
+  if (leave.status === 'approved') {
+    const year = new Date(leave.from_date).getFullYear()
+    const { data: bal } = await supabase
+      .from('leave_balances')
+      .select('id, used_days')
+      .eq('employee_id', leave.employee_id)
+      .eq('leave_type', leave.leave_type)
+      .eq('year', year)
+      .maybeSingle()
+    if (bal) {
+      const restored = Math.max(0, (bal.used_days || 0) - Number(leave.days))
+      await supabase.from('leave_balances').update({ used_days: restored }).eq('id', bal.id)
+    }
+  }
+
+  const { error } = await supabase.from('leave_requests').delete().eq('id', leaveId)
+  if (error) throw error
+
+  // Notify HR
+  try {
+    const { data: hrAdmins } = await supabase
+      .from('employees').select('id').in('role_type', ['hr','admin']).eq('status','active').neq('id', employeeId)
+    if (hrAdmins?.length) {
+      await supabase.from('notifications').insert(
+        hrAdmins.map(hr => ({
+          employee_id: hr.id,
+          type: 'leave_request',
+          title: '🚫 Leave Cancelled',
+          message: `An employee cancelled their ${leave.leave_type?.replace(/_/g,' ')} leave (${leave.from_date} to ${leave.to_date}).`,
+          is_read: false,
+        }))
+      )
+    }
+  } catch (e) { console.warn('Cancel notification failed:', e.message) }
+}
+
 // ─── ANNOUNCEMENTS ────────────────────────────────────────────────────────────
 
 export async function getAnnouncements() {
