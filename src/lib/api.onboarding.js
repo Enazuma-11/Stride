@@ -118,6 +118,18 @@ export async function approveEmployee(employeeId, { role, roleType, employeeType
   } catch (e) { console.warn('Unban warning:', e.message) }
 
   await seedLeaveBalances(employeeId, employeeType)
+
+  // Notify employee their account is approved
+  try {
+    await supabase.from('notifications').insert({
+      employee_id: employeeId,
+      type:    'onboarding',
+      title:   '🎉 Account Approved! Welcome to Stride',
+      message: 'Your account has been approved by HR. You can now access all portal features.',
+      is_read: false,
+    })
+  } catch (e) { console.warn('Approval notification failed:', e.message) }
+
   return data
 }
 

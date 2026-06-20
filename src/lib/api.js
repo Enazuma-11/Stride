@@ -122,12 +122,13 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
 
   // Notify employee of decision
   try {
-    const emoji = status === 'approved' ? '✅' : '❌'
+    const isApproved = status === 'approved'
     await supabase.from('notifications').insert({
       employee_id: data.employee_id,
-      type:  status === 'approved' ? 'leave_approved' : 'leave_rejected',
-      title: `${emoji} Leave ${status === 'approved' ? 'Approved' : 'Rejected'}`,
-      message: `Your ${data.leave_type} leave request has been ${status}.`,
+      type:    isApproved ? 'leave_approved' : 'leave_rejected',
+      title:   isApproved ? '✅ Leave Approved' : '❌ Leave Rejected',
+      message: `Your ${data.leave_type?.replace('_', ' ')} leave from ${data.from_date} to ${data.to_date} has been ${status}.`,
+      is_read: false,
     })
   } catch (e) { console.warn('Leave notification failed:', e.message) }
 
@@ -311,6 +312,17 @@ export async function hrRecordLeave({ employeeId, leaveType, fromDate, toDate, d
       .update({ used_days: newUsed })
       .eq('id', bal.id)
   }
+
+  // Notify employee that HR recorded a leave
+  try {
+    await supabase.from('notifications').insert({
+      employee_id: employeeId,
+      type:    'leave_approved',
+      title:   '✅ Leave Recorded by HR',
+      message: `HR has recorded your ${leaveType.replace(/_/g, ' ')} leave from ${fromDate} to ${toDate} (${days} day${days > 1 ? 's' : ''}).`,
+      is_read: false,
+    })
+  } catch (e) { console.warn('HR record leave notification failed:', e.message) }
 
   return leave
 }

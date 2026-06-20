@@ -5,6 +5,7 @@ import { C, LEAVE_TYPES } from '../../lib/constants'
 import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getAllLeaveRequests, updateLeaveStatus } from '../../lib/api'
+import { notifyLeaveDecision } from '../../lib/api.notifications'
 
 // ── Stat cards ────────────────────────────────────────────────────────────────
 function StatCards({ requests }) {
