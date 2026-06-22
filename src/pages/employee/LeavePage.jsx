@@ -303,6 +303,7 @@ export default function LeavePage() {
         <ApplyForm
           employeeId={employee.id}
           gender={gender}
+          balances={balances}
           onApplied={l => { setRequests(r => [l, ...r]); setTab('overview'); load() }}
         />
       )}

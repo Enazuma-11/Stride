@@ -91,7 +91,7 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
       is_half_day: isHalfDay,
       status:      'pending',
     })
-    .select(`*, employee:employee_id(full_name)`)
+    .select('*')
     .single()
   if (error) throw error
 
@@ -109,7 +109,7 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
           employee_id: hr.id,
           type: 'leave_request',
           title: '🏖️ New Leave Request',
-          message: `${data.employee?.full_name || 'An employee'} applied for ${leaveType.replace(/_/g, ' ')} leave (${days} day${days !== 1 ? 's' : ''}) from ${fromDate} to ${toDate}.`,
+          message: 'An employee applied for ' + leaveType.replace(/_/g, ' ') + ' leave (' + days + ' day' + (days !== 1 ? 's' : '') + ') from ' + fromDate + ' to ' + toDate + '.',
           is_read: false,
         }))
       )
