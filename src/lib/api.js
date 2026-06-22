@@ -135,12 +135,30 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
   // Update leave balance if approved
   if (status === 'approved') {
     const leave = data
-    await supabase.rpc('deduct_leave_balance', {
-      p_employee_id: leave.employee_id,
-      p_leave_type:  leave.leave_type,
-      p_days:        leave.days,
-      p_year:        new Date(leave.from_date).getFullYear(),
-    })
+    const year = new Date(leave.from_date).getFullYear()
+    const { data: bal, error: balFetchErr } = await supabase
+      .from('leave_balances')
+      .select('id, used_days, total_days')
+      .eq('employee_id', leave.employee_id)
+      .eq('leave_type', leave.leave_type)
+      .eq('year', year)
+      .maybeSingle()
+
+    if (balFetchErr) {
+      console.error('Balance fetch error:', balFetchErr.message)
+    } else if (bal) {
+      const newUsed = Math.min(
+        Number(bal.total_days),
+        Number(bal.used_days || 0) + Number(leave.days)
+      )
+      const { error: balUpdateErr } = await supabase
+        .from('leave_balances')
+        .update({ used_days: newUsed })
+        .eq('id', bal.id)
+      if (balUpdateErr) console.error('Balance update error:', balUpdateErr.message)
+    } else {
+      console.warn('No leave balance row found for', leave.leave_type, year)
+    }
   }
 
   // Notify employee of decision
