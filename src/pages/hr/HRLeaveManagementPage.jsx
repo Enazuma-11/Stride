@@ -4,6 +4,7 @@ import { Card, Avatar, Button, Spinner, Alert, EmptyState, Badge, Input, Select 
 import { C, FONTS, LEAVE_TYPES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { useResponsive, cols } from '../../lib/responsive'
+import DateRangePicker from '../../components/DateRangePicker'
 import {
   getAllEmployees,
   getAllLeaveBalances,
@@ -351,19 +352,14 @@ function RecordLeaveModal({ employees, reviewerId, onSaved, onClose }) {
             </div>
           </div>
 
-          {/* Dates */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6, fontFamily: FONTS.body }}>From Date <span style={{ color: '#ef4444' }}>*</span></label>
-              <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); if (!toDate) setToDate(e.target.value) }}
-                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 6, fontFamily: FONTS.body }}>To Date <span style={{ color: '#ef4444' }}>*</span></label>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none' }} />
-            </div>
-          </div>
+          {/* Date range picker */}
+          <DateRangePicker
+            fromDate={fromDate}
+            toDate={toDate}
+            isHalfDay={false}
+            label="Select Dates"
+            onChange={({ fromDate: fd, toDate: td }) => { setFromDate(fd); setToDate(td) }}
+          />
 
           {/* Duration preview */}
           {days > 0 && (
