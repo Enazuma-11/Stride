@@ -5,7 +5,7 @@ import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES, FONTS } from '../../lib/constants'
 import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave, cancelLeave } from '../../lib/api'
-import DateRangePicker from '../../components/DateRangePicker'
+
 
 
 
@@ -50,7 +50,7 @@ function BalanceStrip({ balances, gender }) {
 }
 
 // ── Apply form ────────────────────────────────────────────────────────────────
-function ApplyForm({ employeeId, gender, onApplied }) {
+function ApplyForm({ employeeId, gender, balances, onApplied }) {
   const r          = useResponsive()
   const applicable = getApplicableLeaveTypes(gender)
   const [form, setForm]       = useState({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '', isHalfDay: false })
@@ -141,15 +141,14 @@ function ApplyForm({ employeeId, gender, onApplied }) {
           )}
         </div>
 
-        {/* Date Range Picker */}
-        <DateRangePicker
-          fromDate={form.fromDate}
-          toDate={form.toDate}
-          isHalfDay={form.isHalfDay}
-          onChange={({ fromDate, toDate }) => {
-            setForm(f => ({ ...f, fromDate, toDate }))
-          }}
-        />
+        {/* Dates */}
+        <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : form.isHalfDay ? '1fr' : '1fr 1fr', gap: 12 }}>
+          <Input label={form.isHalfDay ? 'Date' : 'From Date'} type="date" value={form.fromDate}
+            onChange={v => setForm(f => ({ ...f, fromDate: v, toDate: f.isHalfDay ? v : f.toDate }))} required />
+          {!form.isHalfDay && (
+            <Input label="To Date" type="date" value={form.toDate} onChange={v => setForm(f => ({ ...f, toDate: v }))} required />
+          )}
+        </div>
 
         <Textarea label="Reason" value={form.reason} onChange={set('reason')} placeholder="Brief reason for your leave…" required />
 
