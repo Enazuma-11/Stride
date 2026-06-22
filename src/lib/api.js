@@ -132,32 +132,38 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
     .single()
   if (error) throw error
 
-  // Update leave balance if approved
+  // Update leave balance if approved — handle paid/unpaid split
   if (status === 'approved') {
     const leave = data
     const year = new Date(leave.from_date).getFullYear()
-    const { data: bal, error: balFetchErr } = await supabase
+    const { data: bal } = await supabase
       .from('leave_balances')
-      .select('id, used_days, total_days')
+      .select('id, used_days, total_days, unpaid_days_taken')
       .eq('employee_id', leave.employee_id)
       .eq('leave_type', leave.leave_type)
       .eq('year', year)
       .maybeSingle()
 
-    if (balFetchErr) {
-      console.error('Balance fetch error:', balFetchErr.message)
-    } else if (bal) {
-      const newUsed = Math.min(
-        Number(bal.total_days),
-        Number(bal.used_days || 0) + Number(leave.days)
-      )
-      const { error: balUpdateErr } = await supabase
+    if (bal) {
+      const available  = Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0))
+      const totalDays  = Number(leave.days)
+      const paidDays   = Math.min(available, totalDays)
+      const unpaidDays = Math.max(0, totalDays - paidDays)
+      const newUsed    = Number(bal.used_days || 0) + paidDays
+      const newUnpaid  = Number(bal.unpaid_days_taken || 0) + unpaidDays
+
+      // Update balance
+      const { error: balErr } = await supabase
         .from('leave_balances')
-        .update({ used_days: newUsed })
+        .update({ used_days: newUsed, unpaid_days_taken: newUnpaid })
         .eq('id', bal.id)
-      if (balUpdateErr) console.error('Balance update error:', balUpdateErr.message)
-    } else {
-      console.warn('No leave balance row found for', leave.leave_type, year)
+      if (balErr) console.error('Balance update error:', balErr.message)
+
+      // Record paid/unpaid split on the leave request
+      await supabase
+        .from('leave_requests')
+        .update({ paid_days: paidDays, unpaid_days: unpaidDays })
+        .eq('id', leaveId)
     }
   }
 

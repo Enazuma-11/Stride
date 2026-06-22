@@ -36,6 +36,9 @@ function BalanceStrip({ balances, gender }) {
               <div style={{ width: `${pct}%`, height: '100%', background: lt.color, borderRadius: 4, transition: 'width 0.4s' }} />
             </div>
             <div style={{ fontSize: 10, color: C.textLight, marginTop: 4 }}>{used} used · {remaining} remaining</div>
+            {b?.unpaid_days_taken > 0 && (
+              <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2, fontWeight: 600 }}>{b.unpaid_days_taken} unpaid</div>
+            )}
           </Card>
         )
       })}
@@ -127,6 +130,28 @@ function ApplyForm({ employeeId, gender, onApplied }) {
         </div>
 
         <Textarea label="Reason" value={form.reason} onChange={set('reason')} placeholder="Brief reason for your leave…" required />
+
+        {/* Unpaid leave warning */}
+        {days > 0 && (() => {
+          const bal       = balances.find(b => b.leave_type === form.leaveType)
+          const available = bal ? Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0)) : 0
+          const unpaid    = Math.max(0, days - available)
+          if (unpaid <= 0) return null
+          return (
+            <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 2 }}>
+                  Insufficient {LEAVE_TYPES.find(lt => lt.id === form.leaveType)?.label} balance
+                </div>
+                <div style={{ fontSize: 12, color: '#92400e' }}>
+                  You have <strong>{available} day{available !== 1 ? 's' : ''}</strong> remaining.
+                  {unpaid > 0 && <> <strong>{unpaid} day{unpaid !== 1 ? 's' : ''}</strong> will be treated as <strong>unpaid leave (LOP)</strong> and may affect your salary.</>}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         <button onClick={submit} disabled={loading || days === 0}
           style={{ padding: '12px 24px', borderRadius: 10, border: 'none', background: loading || days === 0 ? C.border : C.brand, color: loading || days === 0 ? C.textLight : '#fff', fontSize: 13, fontWeight: 700, cursor: loading || days === 0 ? 'not-allowed' : 'pointer', fontFamily: FONTS.display }}>
