@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-06-20
+**Last updated:** 2026-06-22
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,12 +19,12 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`ec70916` — Fix all notification events - leave apply, approve, reject, announcements, onboarding
+`38df042` — Unpaid leave - warning on apply, auto-split on approval, LOP tracking
 
 ## LOCALLY BUILT (NOT YET PUSHED)
-- `src/lib/api.js` — cancelLeave added, applyLeave includes is_half_day, leave deduction uses direct update
-- `src/pages/employee/LeavePage.jsx` — half-day toggle, cancel button, fixed balance display
-- `src/pages/hr/HRLeaveManagementPage.jsx` — pending leave requests section with approve/reject
+- `src/tests/api.announcements.test.js` — email tests rewritten with proper mocks
+- `src/tests/api.leave.test.js` — leave approval test updated for direct balance update
+- `project.md` — this file
 
 ---
 
@@ -32,8 +32,8 @@
 
 | Code | Name | Email | Role | Auth |
 |---|---|---|---|---|
-| SIL-000001 | Dr. Pinaze Dubash | pinaze@sportechinnolab.org | Founder & Board Advisor | ✅ Created |
-| SIL-000002 | Sanand Salil Mitra | sanand@sportechinnolab.org | Founder & CTO | ✅ Created |
+| SIL-000001 | Dr. Pinaze Dubash | pinaze@sportechinnolab.org | Founder & Board Advisor | ✅ |
+| SIL-000002 | Sanand Salil Mitra | sanand@sportechinnolab.org | Founder & CTO | ✅ |
 | SIL-000003 | Edward Francis Paul | talent@sportechinnolab.org | HR Manager | ✅ |
 | SIL-000004 | Amit Chobitkar | amit.chobitkar@sportechinnolab.org | Founder & CEO / Admin | ✅ |
 | SIL-000005 | Sanjusha Nagwani | sanjusha.nagwani@sportechinnolab.org | Full Stack Developer | ✅ |
@@ -41,154 +41,161 @@
 
 ---
 
+## SANITY CHECK RESULTS (2026-06-22)
+
+| Module | Status | Notes |
+|---|---|---|
+| Routes & Imports | ✅ All OK | All 17 pages imported and routed |
+| Sidebar paths | ✅ All OK | All 15 paths match routes |
+| Leave (Employee) | ✅ All OK | half-day, cancel, unpaid warning, balance cards |
+| Leave API | ✅ All OK | direct update, paid/unpaid split, notifications |
+| HR Leave | ✅ All OK | pending section, approve/reject, unpaid warning |
+| Attendance | ✅ All OK | check-in/out, WFH, late mark, half-day deduction |
+| Profile | ✅ All OK | 8 tabs, photo upload, document upload, I-Card, 2FA, exit |
+| Notifications | ✅ All OK | all 8 events covered, realtime bell |
+| Chat | ✅ All OK | channels, DMs, file attach, reactions, realtime |
+| Policy Centre | ✅ All OK | categories load in modal, HR write gated by RLS |
+| OKRs | ✅ All OK | cycles, objectives, key results, check-ins, auto-calc |
+| Announcements | ✅ All OK | post, react, comment, notify all, realtime |
+| Payslips | ✅ All OK | HR generate, employee view, bank auto-fill, download |
+| Auth & ProtectedRoute | ✅ All OK | session, gates, 2FA, logout |
+| Employee Management | ✅ All OK | create, invite, approve, edit, deactivate |
+| Team Directory | ✅ All OK | search, filter, manager join, YOU badge |
+| PWA | ✅ All OK | manifest, SW, offline, 8 icons |
+| Tests | ✅ 105/105 passing | 6 test files |
+
+---
+
 ## MODULES STATUS
 
 ### ✅ Auth
-- Login / Logout (uses window.location.href for reliable redirect)
-- Register (self-registration)
+- Login / Logout (window.location.href for reliable redirect)
+- Register (self-registration with pending approval gate)
 - Set Password
-- ProtectedRoute with pending/rejected/onboarding gates
-- 2FA (TOTP via Google Authenticator) — requires MFA enabled in Supabase dashboard
-
-### ✅ Dashboard
-- Admin/HR view — stats, pending approvals, attendance summary, birthdays, holidays
-- Employee view — leave balances, today's attendance, announcements
+- ProtectedRoute: pending_approval, rejected, onboarding form, requireHR gates
+- 2FA TOTP — requires MFA enabled in Supabase dashboard
 
 ### ✅ Leave Management (Employee)
 - Apply leave — full day and half day (0.5 day deduction)
-- Cancel leave — pending (direct) or approved (restores balance)
-- Leave history with status badges
+- Real-time unpaid warning when balance insufficient
+- Cancel leave — pending (direct) or approved (restores balance + notifies HR)
+- Leave history with status badges + UNPAID badge
+- Balance cards with progress bars + unpaid days count
 - Gender-aware leave types (maternity = female only)
-- Balance cards with progress bars
-- **KNOWN: cancelLeave + half-day UI not yet pushed — in local build**
 
 ### ✅ Leave Management (HR)
-- View all employees' balances
+- Pending requests section with Approve/Reject buttons
+- Unpaid warning shown on each pending request
 - Adjust/set individual leave balances with audit trail
 - Record offline leave for employee
-- **KNOWN: Pending approval section not yet pushed — in local build**
-- Approve/reject via HR Dashboard (HRDashboardPage.jsx) — wired and working
+- Leave approval deducts paid days + tracks unpaid days separately
 
 ### ✅ Attendance
-- Check in / check out
-- WFH toggle
-- Late mark auto-detection
-- Half day auto-detection on checkout
-- Half day deducts 0.5 from casual_sick leave balance
+- Check-in / check-out with WFH toggle
+- Late mark auto-detection (after 9:30am)
+- Half day auto-detection on early checkout (deducts 0.5 from casual_sick)
 - Monthly calendar view
 - HR attendance override (30 days back)
 - HR attendance report with export
 
 ### ✅ Profile (8 tabs)
 - Personal, Work, Contact, Payroll, Compliance, Emergency, Skills, Exit
-- Profile photo upload (uses createSignedUrl, not getPublicUrl)
+- Profile photo upload (createSignedUrl — private storage)
+- Document upload in Compliance (createSignedUrl + correct column name)
 - 2FA setup in Security tab
-- I-Card with QR code + download
-- Exit: Employee can submit resignation; HR has separate exit process checklist
-- **KNOWN: Document upload in Compliance uses correct signed URL — pushed**
+- I-Card with QR code + html2canvas download
+- Employee can submit resignation (date + reason)
+- HR has separate exit process checklist
 
 ### ✅ Employee Management (HR)
-- Create with password
+- Create with password + seed leave balances
 - Invite via email
-- Self-registration approval
-- Edit employee (role, department, manager, join date)
+- Self-registration approval with role/dept/manager assignment
+- Edit employee modal (role, dept, manager, join date, employee type)
 - Deactivate employee
-- Reporting manager assignment
+- Reporting manager dropdown (all active employees)
 
 ### ✅ Onboarding Form
-- 4-step form: Personal → Contact → Bank → Compliance/Documents
-- Triggers on first login for invited employees
+- 4-step: Personal → Contact → Bank → Compliance/Documents
+- Triggered on first login for invited employees
 - Saves to profile, payroll, compliance tables
-- Uploads documents to Supabase Storage
 - Notifies HR on submission
-- Gate: employees cannot access portal until form submitted
+- Gate: employees blocked until form submitted
 
 ### ✅ Payslips
-- HR generates per employee per month
-- Components: Basic, HRA, Conveyance, Medical, LTA, Special Allowance + deductions
-- Bank details auto-populated from employee payroll profile
-- Preview before save
-- Download as high-res PNG
-- Employee views own payslips at /payslips
-- HR/Admin goes to /hr/payslips (sidebar routes correctly by role)
+- HR generates per employee/month with all components
+- Bank details auto-populated from employee_payroll table
+- Preview before save, download as PNG
+- LOP deduction field available (feeds from unpaid leaves)
+- Employee views own at /payslips, HR/Admin at /hr/payslips
 
 ### ✅ Announcements
-- HR/Admin posts with categories (General/HR/Event/Urgent)
-- Pin to top
-- Emoji reactions (👍❤️🎉)
-- Comments with delete
-- Real-time updates
+- HR/Admin posts (General/HR/Event/Urgent categories)
+- Pin to top, emoji reactions (👍❤️🎉), comments
+- Real-time updates via Supabase
 - Notifies all employees on post
 
 ### ✅ Team Directory
-- Searchable employee cards
-- Filter by department
-- Shows: photo, name, role, dept, employee ID, email, phone, reporting manager
-- Current user highlighted with "YOU" badge
+- Searchable cards with department filter
+- Shows: photo, name, role, dept, employee ID, email, phone
+- Reporting manager shown with their photo + role
+- Current user highlighted with YOU badge
 
 ### ✅ Performance / OKRs
-- Quarterly cycles (Q2 2026 active, Q3 2026 upcoming)
-- Add objectives with description
-- Key results with metric types (%, number, ₹, done/not-done)
-- Progress rings auto-calculate from key results
+- Q2 2026 active, Q3 2026 upcoming
+- Objectives with key results (%, number, ₹, boolean)
+- Progress rings auto-calculate from key results average
 - Check-in with notes + progress slider
 - Status: On Track / At Risk / Behind / Completed
-- HR can toggle between own OKRs and all employees
+- HR toggles between own OKRs and all employees
 
 ### ✅ Policy Centre
-- Categories: HR Policies, Company Handbook, Benefits, IT & Security, Legal & Compliance, Operations
-- HR uploads PDF/doc, saves as draft, publishes when ready
-- Employees see published documents, can download
-- Optional acknowledgement requirement
-- **FIX APPLIED: policy_categories RLS policy added manually in Supabase**
+- Categories: HR Policies, Handbook, Benefits, IT & Security, Legal, Operations
+- HR uploads, saves draft, publishes — employees see published only
+- File download via signed URL
+- Optional acknowledgement — pending ack banner shown
+- Category dropdown loads fresh in modal (useEffect)
 
 ### ✅ Internal Chat
 - Channels: #general, #random, #engineering, #hr (HR/Admin creates more)
-- Direct messages between any two employees
-- File attachments
-- Emoji reactions (👍❤️😂😮😢🎉)
-- Real-time (Supabase realtime subscription)
-- Delete own messages
-
-### ✅ PWA
-- manifest.json with SporTech Stride name
-- Service worker with full offline caching
-- Icons: 8 sizes (72px to 512px)
-- iOS splash screens: 10 sizes (iPhone 5 to iPhone 14 Pro Max + iPad)
-- Install prompt (Android auto-banner, iOS instructions)
-- Offline fallback page
+- Direct messages (any employee → any employee)
+- File attachments, emoji reactions, delete own messages
+- Real-time via Supabase realtime subscriptions
 
 ### ✅ Notifications
-- In-app bell with unread count
-- Real-time via Supabase subscription
-- Events covered:
-  - Employee applies leave → HR + Admin notified
-  - HR approves/rejects leave → Employee notified
-  - HR records leave → Employee notified
-  - New announcement → All employees notified
-  - Employee approved/onboarded → Employee welcome notification
-  - Employee submits onboarding form → HR + Admin notified
-  - Birthday today → Employee + HR notified (daily check)
-  - Holiday in 3 days → All employees notified (daily check)
+- In-app bell with unread count, realtime
+- Events: leave apply → HR, leave approve/reject → employee, leave cancel → HR,
+  HR record leave → employee, announcement → all, onboarding → HR,
+  account approved → employee, birthday → employee+HR, holiday 3-day warning → all
 
-### ✅ Test Suite (Vitest)
-- 112 tests across 6 files — all passing
-- `npm test` to run, `npm run test:coverage` for coverage report
+### ✅ PWA
+- Standalone app, start at /dashboard
+- Full offline caching, offline fallback page
+- 8 icon sizes, 10 iOS splash screens
+- Install prompt (Android auto, iOS manual)
 
----
-
-## PENDING ACTIVATION (Needs manual action)
-
-| Item | Action Required |
-|---|---|
-| 2FA | Enable TOTP in Supabase → Authentication → MFA |
-| MSG91 Email | Verify domain in GoDaddy + add DNS records |
-| Custom domain | Add CNAME in GoDaddy → `portal.sportechinnolab.org` |
-| Storage bucket | Create `employee-documents` bucket in Supabase Storage (private) |
+### ✅ Tests
+- 105 tests across 6 files — all passing
+- api.attendance, api.leave, api.payslips, api.announcements, constants, validation
 
 ---
 
-## DATABASE MIGRATIONS (Production — all run)
+## PENDING ACTIONS (Manual steps required)
+
+| Priority | Item | Action |
+|---|---|---|
+| 🔴 HIGH | SQL: lr_delete_own policy | Run in both Supabase: `CREATE POLICY "lr_delete_own" ON leave_requests FOR DELETE TO authenticated USING (employee_id = (SELECT id FROM employees WHERE user_id = auth.uid()));` |
+| 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns |
+| 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
+| 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
+| 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
+| 🟡 MED | Storage bucket | Create employee-documents bucket (private) in both Supabase projects |
+
+---
+
+## DATABASE MIGRATIONS
+
+### Production (fqyyvdtjzswdkgrkytam) — Status
 
 | File | Status |
 |---|---|
@@ -206,7 +213,19 @@
 | supabase_migration_founders_resequence.sql | ✅ |
 | supabase_migration_okrs.sql | ✅ |
 | supabase_migration_policy_chat.sql | ✅ |
-| policy_categories RLS fix (manual SQL) | ✅ |
+| policy_categories RLS (manual SQL) | ✅ |
+| lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
+| supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
+
+### Test (uzysmoeyrenbhpbdxled) — Status
+
+| File | Status |
+|---|---|
+| supabase_test_environment_schema.sql | ✅ |
+| seed_test_data.sql | ✅ |
+| policy_categories RLS (manual SQL) | ✅ |
+| lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
+| supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
 
 ---
 
@@ -214,72 +233,54 @@
 
 ```
 src/
-  App.jsx                          — routes
+  App.jsx                          — 17 routes defined
   lib/
-    constants.js                   — design tokens, leave types, holidays
-    supabase.js                    — supabase client
-    api.js                         — core: auth, profile, leave, announcements
-    api.attendance.js              — check-in/out, monthly data, HR override
-    api.profile.js                 — profile photo upload, document upload
-    api.onboarding.js              — employee creation flows, approveEmployee
-    api.notifications.js           — notifications CRUD, realtime, daily checks
-    api.payslips.js                — payslip CRUD, calcPayslipTotals, MONTH_NAMES
-    api.announcements.js           — announcements, reactions, comments
-    api.okrs.js                    — OKR cycles, objectives, key results, check-ins
-    api.policies.js                — policy centre CRUD
-    api.chat.js                    — channels, DMs, messages, reactions
-    email.notifications.js         — MSG91 email (ready, awaiting domain)
-    responsive.js                  — useResponsive hook
+    constants.js                   — design tokens, LEAVE_TYPES, FEMALE_ONLY_LEAVES, DEPARTMENTS
+    supabase.js                    — Supabase client
+    api.js                         — auth, leave CRUD, cancelLeave, applyLeave (isHalfDay), updateLeaveStatus (direct update, paid/unpaid split)
+    api.attendance.js              — checkIn/checkOut, deductHalfDayLeave, overrideAttendance
+    api.profile.js                 — uploadProfilePhoto (createSignedUrl), uploadDocument (createSignedUrl, document_type col)
+    api.onboarding.js              — createEmployeeWithPassword, inviteEmployee, approveEmployee, seedLeaveBalances
+    api.notifications.js           — all events, realtime subscription, runDailyChecks
+    api.payslips.js                — savePayslip, getMyPayslips, calcPayslipTotals
+    api.announcements.js           — createAnnouncement (notifies all), toggleReaction, addComment
+    api.okrs.js                    — cycles, objectives, key results, checkins, recalcObjectiveProgress
+    api.policies.js                — getPolicies, createPolicy, uploadPolicyFile (createSignedUrl), publishPolicy, acknowledgePolicy
+    api.chat.js                    — channels, DMs, messages, reactions, uploadChatFile
+    email.notifications.js         — MSG91 (awaiting domain)
   components/
     layout/
-      AppShell.jsx                 — main layout wrapper
-      Sidebar.jsx                  — white top, dark purple nav, teal active
-      TopBar.jsx                   — shows profile photo
-      BottomNav.jsx                — mobile bottom nav
-      ProtectedRoute.jsx           — auth gates including onboarding form gate
-      NotificationBell.jsx         — realtime notification bell
-    ui/index.jsx                   — Card, Avatar, Badge, Button, Input, etc.
-    OnboardingFormFull.jsx         — 4-step onboarding form
-    EmployeeICard.jsx              — I-Card with QR code
-    PayslipDocument.jsx            — payslip renderer + download
-    TwoFactorAuth.jsx              — 2FA setup and verify
-    PWAInstallPrompt.jsx           — PWA install banner
-    AttendanceOverridePanel.jsx    — HR attendance override
+      Sidebar.jsx                  — overflowY:auto (scrollable), window.location.href logout
+      ProtectedRoute.jsx           — gates: session, pending, rejected, onboarding form, requireHR
+      NotificationBell.jsx         — realtime, unread count, mark read
+    ui/index.jsx                   — Card, Avatar, Badge (status-aware), Button, Input, Select, Spinner, EmptyState, Alert
+    OnboardingFormFull.jsx         — 4-step form, notifies HR on submit
+    EmployeeICard.jsx              — QR via api.qrserver.com, html2canvas download
+    PayslipDocument.jsx            — PNG download
+    TwoFactorAuth.jsx              — TwoFactorSetup, TwoFactorVerify
   pages/
-    auth/
-      LoginPage.jsx
-      RegisterPage.jsx
-      SetPasswordPage.jsx
     employee/
-      DashboardPage.jsx
-      LeavePage.jsx                — ⚠️ LOCAL BUILD NOT PUSHED (half-day + cancel)
-      AttendancePage.jsx
-      ProfilePage.jsx
-      PayslipsPage.jsx
-      AnnouncementsPage.jsx
-      TeamDirectoryPage.jsx
-      PerformancePage.jsx
-      PolicyCentrePage.jsx
-      ChatPage.jsx
+      LeavePage.jsx                — half-day toggle, cancel, unpaid warning, balance cards
+      AttendancePage.jsx           — checkin/checkout, WFH, monthly calendar
+      ProfilePage.jsx              — 8 tabs, photo, documents, I-Card, 2FA, exit
+      PayslipsPage.jsx             — employee view
+      AnnouncementsPage.jsx        — post (HR), react, comment, realtime
+      TeamDirectoryPage.jsx        — search, filter, manager join
+      PerformancePage.jsx          — OKRs, progress rings, check-ins
+      PolicyCentrePage.jsx         — categories load in modal, upload, publish, acknowledge
+      ChatPage.jsx                 — channels+DMs, files, reactions, realtime
+      DashboardPage.jsx            — stats, leave balances, attendance, announcements
     hr/
-      HRDashboardPage.jsx          — leave approvals here
-      HRAttendancePage.jsx
-      EmployeeManagementPage.jsx
-      HRLeaveManagementPage.jsx    — ⚠️ LOCAL BUILD NOT PUSHED (pending section)
-      HRPayslipsPage.jsx
-  tests/
-    setup.js
-    constants.test.js
-    api.attendance.test.js
-    api.payslips.test.js
-    api.leave.test.js
-    api.announcements.test.js
-    validation.test.js
-  context/AuthContext.jsx          — session, employee, isHR, refetchEmployee
-supabase/functions/create-employee/index.ts  — Edge Function
-public/
-  manifest.json, sw.js, offline.html, logo.png
-  icons/ (8 sizes), splash/ (10 sizes)
+      HRDashboardPage.jsx          — pending leaves (approve/reject), stats, attendance
+      HRLeaveManagementPage.jsx    — pending requests, balances, adjust, record offline
+      HRPayslipsPage.jsx           — generate, bank auto-fill, preview, download
+      HRAttendancePage.jsx         — team view, override
+      EmployeeManagementPage.jsx   — create, invite, approve, edit (EditEmployeeModal + ManagerSelector), deactivate
+  tests/                           — 105 tests, all passing
+  context/AuthContext.jsx          — session, employee, isHR, isAdmin, refetchEmployee
+supabase/functions/create-employee/index.ts
+public/ — manifest.json, sw.js, offline.html, logo.png, icons/, splash/
+project.md — THIS FILE
 ```
 
 ---
@@ -291,34 +292,18 @@ public/
 | Brand blue | #126dad |
 | Purple | #9b75f1 |
 | Teal | #00d4aa |
-| Gradient | linear-gradient(90deg, #9b75f1, #126dad, #00d4aa, #a4ff3d) |
 | Sidebar dark | #1a0f2e |
+| Gradient | linear-gradient(90deg, #9b75f1, #126dad, #00d4aa, #a4ff3d) |
 | Font display | Plus Jakarta Sans |
 | Font body | Inter |
 | Font mono | JetBrains Mono |
 
 ---
 
-## KNOWN ISSUES / TODO
+## BACKLOG
 
-| Priority | Issue | Status |
-|---|---|---|
-| 🔴 HIGH | LeavePage half-day + cancel not pushed | Locally built, needs push |
-| 🔴 HIGH | HRLeaveManagementPage pending section not pushed | Locally built, needs push |
-| 🟡 MED | 2FA QR code not working | Needs MFA enabled in Supabase dashboard |
-| 🟡 MED | MSG91 email not sending | Awaiting GoDaddy domain verification |
-| 🟡 MED | Custom domain not configured | Awaiting GoDaddy access |
-| 🟢 LOW | Test suite doesn't cover chat, policy, OKR modules | Future work |
-| 🟢 LOW | Documents module (personal file locker) | Not yet built |
-| 🟢 LOW | Expenses module | Not yet built |
-
----
-
-## NEXT FEATURES (Backlog)
-
-1. Documents module — personal file locker per employee
-2. Expenses module — submit, approve, track
-3. Push notifications via MSG91
-4. Custom domain setup
-5. Performance reviews (self + manager)
-6. Analytics dashboard
+1. Documents module — personal file locker per employee (upload PAN, Aadhaar, certificates)
+2. Expenses module — submit, approve, track reimbursements
+3. Push notifications via MSG91 (pending domain verification)
+4. Custom domain portal.sportechinnolab.org
+5. Analytics dashboard — headcount, leave trends, attendance heatmap

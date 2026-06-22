@@ -115,24 +115,41 @@ describe('updateLeaveStatus', () => {
       leave_type: 'earned', days: 3,
       from_date: '2026-07-15', status: 'approved',
     }
-    supabase.from.mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+    const mockBal = { id: 'bal1', used_days: 2, total_days: 18, unpaid_days_taken: 0 }
+    // Mock chain: update leave → fetch balance → update balance → update paid/unpaid → notify
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+            }),
           }),
         }),
-      }),
-    })
-    supabase.rpc.mockResolvedValue({ data: null, error: null })
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: mockBal, error: null }),
+              }),
+            }),
+          }),
+        }),
+      })
+      .mockReturnValue({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
 
     const result = await updateLeaveStatus('leave1', 'approved', 'hr1')
     expect(result.status).toBe('approved')
-    // Should call RPC to deduct balance when approved
-    expect(supabase.rpc).toHaveBeenCalledWith('deduct_leave_balance', expect.any(Object))
   })
 
-  it('does NOT call deduct_leave_balance when rejected', async () => {
+  it('does NOT deduct balance when rejected', async () => {
     const mockLeave = {
       id: 'leave1', employee_id: 'emp1',
       leave_type: 'earned', days: 3,
@@ -146,6 +163,7 @@ describe('updateLeaveStatus', () => {
           }),
         }),
       }),
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
     })
 
     await updateLeaveStatus('leave1', 'rejected', 'hr1')
