@@ -91,6 +91,26 @@ function ApplyForm({ employeeId, gender, onApplied }) {
     finally { setLoad(false) }
   }
 
+  // Pre-compute unpaid warning to avoid IIFE crash in JSX
+  const _selBal     = balances.find(b => b.leave_type === form.leaveType)
+  const _available  = _selBal ? Math.max(0, Number(_selBal.total_days) - Number(_selBal.used_days || 0)) : 0
+  const _unpaid     = days > 0 ? Math.max(0, days - _available) : 0
+  const _ltLabel    = LEAVE_TYPES.find(lt => lt.id === form.leaveType)?.label || ''
+  const unpaidWarning = (days > 0 && _unpaid > 0) ? (
+    <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 2 }}>
+          Insufficient {_ltLabel} balance
+        </div>
+        <div style={{ fontSize: 12, color: '#92400e' }}>
+          You have <strong>{_available} day{_available !== 1 ? 's' : ''}</strong> remaining.
+          {' '}<strong>{_unpaid} day{_unpaid !== 1 ? 's' : ''}</strong> will be treated as <strong>unpaid leave (LOP)</strong> and may affect your salary.
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <Card style={{ padding: '24px 28px' }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 20 }}>
@@ -133,27 +153,8 @@ function ApplyForm({ employeeId, gender, onApplied }) {
 
         <Textarea label="Reason" value={form.reason} onChange={set('reason')} placeholder="Brief reason for your leave…" required />
 
-        {/* Unpaid leave warning */}
-        {days > 0 && (() => {
-          const bal       = balances.find(b => b.leave_type === form.leaveType)
-          const available = bal ? Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0)) : 0
-          const unpaid    = Math.max(0, days - available)
-          if (unpaid <= 0) return null
-          return (
-            <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 2 }}>
-                  Insufficient {LEAVE_TYPES.find(lt => lt.id === form.leaveType)?.label} balance
-                </div>
-                <div style={{ fontSize: 12, color: '#92400e' }}>
-                  You have <strong>{available} day{available !== 1 ? 's' : ''}</strong> remaining.
-                  {unpaid > 0 && <> <strong>{unpaid} day{unpaid !== 1 ? 's' : ''}</strong> will be treated as <strong>unpaid leave (LOP)</strong> and may affect your salary.</>}
-                </div>
-              </div>
-            </div>
-          )
-        })()}
+        {/* Unpaid leave warning - plain variables, no IIFE */}
+        {unpaidWarning}
 
         <button onClick={submit} disabled={loading || days === 0}
           style={{ padding: '12px 24px', borderRadius: 10, border: 'none', background: loading || days === 0 ? C.border : C.brand, color: loading || days === 0 ? C.textLight : '#fff', fontSize: 13, fontWeight: 700, cursor: loading || days === 0 ? 'not-allowed' : 'pointer', fontFamily: FONTS.display }}>
