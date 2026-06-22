@@ -6,6 +6,159 @@ import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave, cancelLeave } from '../../lib/api'
 
+
+// ── Date Range Picker ─────────────────────────────────────────────────────────
+function DateRangePicker({ fromDate, toDate, isHalfDay, onChange }) {
+  const today     = new Date()
+  const [viewing, setViewing] = useState(() => {
+    const d = fromDate ? new Date(fromDate) : new Date()
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+  const [selecting, setSelecting] = useState('from') // 'from' | 'to'
+  const [hovered,   setHovered]   = useState(null)
+
+  const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  function toISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  }
+
+  function fromISO(s) { return s ? new Date(s + 'T00:00:00') : null }
+
+  function getDaysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate()
+  }
+
+  function getFirstDayOfMonth(year, month) {
+    return new Date(year, month, 1).getDay()
+  }
+
+  function handleDayClick(dateStr) {
+    if (isHalfDay) {
+      onChange({ fromDate: dateStr, toDate: dateStr })
+      return
+    }
+    if (selecting === 'from' || !fromDate) {
+      onChange({ fromDate: dateStr, toDate: '' })
+      setSelecting('to')
+    } else {
+      // If clicked before fromDate, restart
+      if (dateStr < fromDate) {
+        onChange({ fromDate: dateStr, toDate: '' })
+        setSelecting('to')
+      } else {
+        onChange({ fromDate, toDate: dateStr })
+        setSelecting('from')
+      }
+    }
+  }
+
+  function isInRange(dateStr) {
+    if (!fromDate) return false
+    const end = toDate || hovered
+    if (!end) return false
+    return dateStr > fromDate && dateStr < end
+  }
+
+  function isStart(dateStr) { return dateStr === fromDate }
+  function isEnd(dateStr)   { return dateStr === (toDate || hovered) }
+
+  const year  = viewing.year
+  const month = viewing.month
+  const days  = getDaysInMonth(year, month)
+  const first = getFirstDayOfMonth(year, month)
+
+  const cells = []
+  for (let i = 0; i < first; i++) cells.push(null)
+  for (let d = 1; d <= days; d++) {
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    cells.push({ day: d, iso })
+  }
+
+  function prevMonth() {
+    setViewing(v => v.month === 0 ? { year: v.year-1, month: 11 } : { year: v.year, month: v.month-1 })
+  }
+  function nextMonth() {
+    setViewing(v => v.month === 11 ? { year: v.year+1, month: 0 } : { year: v.year, month: v.month+1 })
+  }
+
+  const todayISO = toISO(today)
+
+  return (
+    <div>
+      <label style={{ fontSize: 12, fontWeight: 600, color: C.textMid, display: 'block', marginBottom: 8 }}>
+        {isHalfDay ? 'Select Date' : selecting === 'from' || !fromDate ? '📅 Select Start Date' : '📅 Select End Date'}
+        {fromDate && !isHalfDay && (
+          <span style={{ marginLeft: 8, fontSize: 11, color: C.brand, fontWeight: 700 }}>
+            {fromDate}{toDate && toDate !== fromDate ? ` → ${toDate}` : ''}
+          </span>
+        )}
+        {isHalfDay && fromDate && (
+          <span style={{ marginLeft: 8, fontSize: 11, color: C.brand, fontWeight: 700 }}>{fromDate}</span>
+        )}
+      </label>
+
+      <div style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 14, overflow: 'hidden', userSelect: 'none' }}>
+        {/* Month navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: C.bg }}>
+          <button onClick={prevMonth} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: C.textMid, padding: '2px 8px', borderRadius: 6 }}>‹</button>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: FONTS.display }}>{MONTHS[month]} {year}</span>
+          <button onClick={nextMonth} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: C.textMid, padding: '2px 8px', borderRadius: 6 }}>›</button>
+        </div>
+
+        {/* Day labels */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', padding: '8px 12px 4px' }}>
+          {DAYS.map(d => (
+            <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: C.textLight, padding: '4px 0' }}>{d}</div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', padding: '0 12px 12px', gap: 2 }}>
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={i} />
+
+            const isToday   = cell.iso === todayISO
+            const isPast    = cell.iso < todayISO
+            const start     = isStart(cell.iso)
+            const end       = isEnd(cell.iso)
+            const inRange   = isInRange(cell.iso)
+            const selected  = start || end
+
+            return (
+              <div key={cell.iso}
+                onClick={() => !isPast && handleDayClick(cell.iso)}
+                onMouseEnter={() => !isPast && !toDate && fromDate && setHovered(cell.iso)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  textAlign: 'center', padding: '7px 2px', borderRadius: selected ? 8 : inRange ? 0 : 8,
+                  background: selected ? C.brand : inRange ? `${C.brand}20` : 'transparent',
+                  color: selected ? '#fff' : isPast ? C.border : isToday ? C.brand : C.text,
+                  fontSize: 13, fontWeight: selected || isToday ? 700 : 400,
+                  cursor: isPast ? 'not-allowed' : 'pointer',
+                  border: isToday && !selected ? `1.5px solid ${C.brand}` : '1.5px solid transparent',
+                  transition: 'all 0.1s',
+                  borderRadius: start ? '8px 0 0 8px' : end ? '0 8px 8px 0' : inRange ? 0 : 8,
+                }}
+              >
+                {cell.day}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Legend */}
+        {!isHalfDay && fromDate && !toDate && (
+          <div style={{ padding: '8px 16px 12px', fontSize: 11, color: C.textLight, borderTop: `1px solid ${C.border}`, textAlign: 'center' }}>
+            Now select an end date
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function getApplicableLeaveTypes(gender) {
   return LEAVE_TYPES.filter(lt => {
     if (FEMALE_ONLY_LEAVES.includes(lt.id)) return gender === 'female'
@@ -57,10 +210,7 @@ function ApplyForm({ employeeId, gender, onApplied }) {
   const set = k => v => setForm(f => ({ ...f, [k]: v }))
 
   function handleHalfDay(val) {
-    setForm(f => ({ ...f, isHalfDay: val, toDate: val ? f.fromDate : '' }))
-  }
-  function handleFromDate(val) {
-    setForm(f => ({ ...f, fromDate: val, toDate: f.isHalfDay ? val : f.toDate }))
+    setForm(f => ({ ...f, isHalfDay: val, fromDate: '', toDate: '' }))
   }
 
   const days = form.isHalfDay ? 0.5
@@ -121,13 +271,15 @@ function ApplyForm({ employeeId, gender, onApplied }) {
           )}
         </div>
 
-        {/* Dates */}
-        <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : form.isHalfDay ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <Input label={form.isHalfDay ? 'Date' : 'From Date'} type="date" value={form.fromDate} onChange={handleFromDate} required />
-          {!form.isHalfDay && (
-            <Input label="To Date" type="date" value={form.toDate} onChange={set('toDate')} required />
-          )}
-        </div>
+        {/* Date Range Picker */}
+        <DateRangePicker
+          fromDate={form.fromDate}
+          toDate={form.toDate}
+          isHalfDay={form.isHalfDay}
+          onChange={({ fromDate, toDate }) => {
+            setForm(f => ({ ...f, fromDate, toDate }))
+          }}
+        />
 
         <Textarea label="Reason" value={form.reason} onChange={set('reason')} placeholder="Brief reason for your leave…" required />
 
