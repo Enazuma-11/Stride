@@ -78,7 +78,7 @@ export async function getAllLeaveRequests() {
   return data
 }
 
-export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason }) {
+export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false }) {
   const { data, error } = await supabase
     .from('leave_requests')
     .insert({
@@ -88,11 +88,34 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
       to_date:     toDate,
       days,
       reason,
+      is_half_day: isHalfDay,
       status:      'pending',
     })
-    .select()
+    .select(`*, employee:employee_id(full_name)`)
     .single()
   if (error) throw error
+
+  // Notify HR + Admin
+  try {
+    const { data: hrAdmins } = await supabase
+      .from('employees')
+      .select('id')
+      .in('role_type', ['hr', 'admin'])
+      .eq('status', 'active')
+      .neq('id', employeeId)
+    if (hrAdmins?.length) {
+      await supabase.from('notifications').insert(
+        hrAdmins.map(hr => ({
+          employee_id: hr.id,
+          type: 'leave_request',
+          title: '🏖️ New Leave Request',
+          message: `${data.employee?.full_name || 'An employee'} applied for ${leaveType.replace(/_/g, ' ')} leave (${days} day${days !== 1 ? 's' : ''}) from ${fromDate} to ${toDate}.`,
+          is_read: false,
+        }))
+      )
+    }
+  } catch (e) { console.warn('Leave apply notification failed:', e.message) }
+
   return data
 }
 
