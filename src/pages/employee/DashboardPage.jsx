@@ -25,8 +25,9 @@ function daysUntil(dateStr) {
 
 // ── Leave balance mini card ───────────────────────────────────────────────────
 function BalanceCard({ lt, balance }) {
-  const remaining = balance?.remaining ?? lt.total
-  const total     = balance?.total_days ?? lt.total
+  const total     = Number(balance?.total_days ?? lt.total ?? 0)
+  const used      = Number(balance?.used_days  ?? 0)
+  const remaining = Math.max(0, total - used)
   const pct       = total > 0 ? (remaining / total) * 100 : 0
   return (
     <Card style={{ padding: '16px 18px' }}>

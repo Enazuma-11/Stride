@@ -1,8 +1,8 @@
 // ─── STRIDE SERVICE WORKER ────────────────────────────────────────────────────
 // SporTech Innovation Lab — Full offline PWA support
 
-const CACHE_NAME = 'stride-v1'
-const STATIC_CACHE = 'stride-static-v1'
+const CACHE_NAME = 'stride-v3'
+const STATIC_CACHE = 'stride-static-v3'
 const API_CACHE = 'stride-api-v1'
 
 // Assets to cache immediately on install
