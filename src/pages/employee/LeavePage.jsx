@@ -126,20 +126,23 @@ function DateRangePicker({ fromDate, toDate, isHalfDay, onChange }) {
             const inRange   = isInRange(cell.iso)
             const selected  = start || end
 
+            // Compute styles cleanly to avoid duplicate keys
+            const br = start ? '8px 0 0 8px' : end ? '0 8px 8px 0' : inRange ? '0px' : '8px'
+            const bg = selected ? C.brand : inRange ? `${C.brand}20` : 'transparent'
+            const cl = selected ? '#fff' : isPast ? C.border : isToday ? C.brand : C.text
+            const bo = isToday && !selected ? `1.5px solid ${C.brand}` : '1.5px solid transparent'
+
             return (
               <div key={cell.iso}
                 onClick={() => !isPast && handleDayClick(cell.iso)}
                 onMouseEnter={() => !isPast && !toDate && fromDate && setHovered(cell.iso)}
                 onMouseLeave={() => setHovered(null)}
                 style={{
-                  textAlign: 'center', padding: '7px 2px', borderRadius: selected ? 8 : inRange ? 0 : 8,
-                  background: selected ? C.brand : inRange ? `${C.brand}20` : 'transparent',
-                  color: selected ? '#fff' : isPast ? C.border : isToday ? C.brand : C.text,
+                  textAlign: 'center', padding: '7px 2px',
+                  borderRadius: br, background: bg, color: cl,
                   fontSize: 13, fontWeight: selected || isToday ? 700 : 400,
                   cursor: isPast ? 'not-allowed' : 'pointer',
-                  border: isToday && !selected ? `1.5px solid ${C.brand}` : '1.5px solid transparent',
-                  transition: 'all 0.1s',
-                  borderRadius: start ? '8px 0 0 8px' : end ? '0 8px 8px 0' : inRange ? 0 : 8,
+                  border: bo, transition: 'all 0.1s',
                 }}
               >
                 {cell.day}
