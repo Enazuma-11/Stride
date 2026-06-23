@@ -5,6 +5,7 @@ import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES, FONTS } from '../../lib/constants'
 import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave, cancelLeave } from '../../lib/api'
+import DateRangePicker from '../../components/DateRangePicker'
 
 
 
@@ -141,14 +142,13 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
           )}
         </div>
 
-        {/* Dates */}
-        <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : form.isHalfDay ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <Input label={form.isHalfDay ? 'Date' : 'From Date'} type="date" value={form.fromDate}
-            onChange={v => setForm(f => ({ ...f, fromDate: v, toDate: f.isHalfDay ? v : f.toDate }))} required />
-          {!form.isHalfDay && (
-            <Input label="To Date" type="date" value={form.toDate} onChange={v => setForm(f => ({ ...f, toDate: v }))} required />
-          )}
-        </div>
+        {/* Single calendar date range picker */}
+        <DateRangePicker
+          fromDate={form.fromDate}
+          toDate={form.toDate}
+          isHalfDay={form.isHalfDay}
+          onChange={({ fromDate: fd, toDate: td }) => setForm(f => ({ ...f, fromDate: fd, toDate: td }))}
+        />
 
         <Textarea label="Reason" value={form.reason} onChange={set('reason')} placeholder="Brief reason for your leave…" required />
 
