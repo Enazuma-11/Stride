@@ -1,0 +1,8 @@
+[functions.create-employee]
+# self_register flow is called by an unauthenticated visitor (new employee
+# signing up before HR approval), so the platform-level JWT gate must be
+# disabled here. The function's own code (index.ts) still verifies the
+# caller is HR/Admin for the invite/create_with_password/approve_employee
+# flows — this only turns off Supabase's gateway-level check that blocks
+# the request before it reaches that code.
+verify_jwt = false

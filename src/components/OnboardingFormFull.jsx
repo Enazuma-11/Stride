@@ -15,6 +15,10 @@ const STEPS = [
 
 const TSHIRT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
+// DB CHECK constraints require lowercase/underscored values (e.g. 'non_binary'),
+// but the UI shows human-readable labels — normalize before saving.
+const toEnum = s => s.toLowerCase().trim().replace(/[\s-]+/g, '_')
+
 const DOC_TYPES = [
   { key: 'profile_photo',       label: 'Profile Photo',                    desc: 'Passport-sized photo for company records', required: true,  accept: 'image/*',       maxMB: 5  },
   { key: 'education_cert',      label: 'Education Certificate',            desc: 'Copies of your academic certificates/degrees', required: true, accept: '.pdf,image/*', maxMB: 10 },
@@ -255,11 +259,11 @@ export default function OnboardingForm() {
         .update({
           full_name:         fullName,
           nick_name:         nickName || null,
-          gender,
+          gender:            toEnum(gender),
           date_of_birth:     dob,
           father_name:       fatherName,
           mother_name:       motherName,
-          marital_status:    maritalStatus || null,
+          marital_status:    maritalStatus ? toEnum(maritalStatus) : null,
           hobbies:           hobbies || null,
           tshirt_size:       tshirtSize,
           sports_interests:  sportsInterest || null,
