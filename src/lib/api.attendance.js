@@ -27,7 +27,7 @@ export function deriveDailyStatus(totalHours, isWFH, hasOpenSession, employeeTyp
   return 'half_day'
 }
 
-function addDaysISO(dateStr, days) {
+export function addDaysISO(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().split('T')[0]

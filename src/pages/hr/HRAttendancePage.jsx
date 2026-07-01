@@ -8,9 +8,10 @@ import { useAuth } from '../../context/AuthContext'
 import {
   getTeamAttendanceByDate, getTeamMonthlyAttendance,
   getHolidays, addHoliday, deleteHoliday,
-  todayISO,
+  todayISO, getTeamWeeklyAttendance, getWeekStart, addDaysISO,
 } from '../../lib/api.attendance'
 import { getAllEmployees } from '../../lib/api'
+import RegularizationQueue from '../../components/RegularizationQueue'
 
 function StatusBadge({ status }) {
   const s = ATTENDANCE_STATUSES.find(a => a.value === status)
@@ -247,6 +248,60 @@ function HolidaysPanel({ holidays, year, onAdd, onDelete }) {
   )
 }
 
+// ─── WEEKLY TEAM REPORT ───────────────────────────────────────────────────────
+function WeeklyView({ weekStart, onWeekChange }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([getTeamWeeklyAttendance(weekStart), getAllEmployees()])
+      .then(([weekly, allEmployees]) => {
+        const byId = Object.fromEntries(weekly.map(r => [r.employee.id, r]))
+        // Merge in active employees with no attendance rows this week (e.g. on
+        // leave all week, or newly onboarded) so they don't silently vanish —
+        // getTeamWeeklyAttendance only returns employees with >=1 row that week.
+        const merged = allEmployees.map(emp => byId[emp.id] || {
+          employee: emp,
+          totalHours: 0,
+          sessionDays: 0,
+          wfhDays: 0,
+        })
+        setRows(merged.sort((a, b) => a.employee.full_name.localeCompare(b.employee.full_name)))
+      })
+      .finally(() => setLoading(false))
+  }, [weekStart])
+
+  return (
+    <Card padding="0">
+      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>Week of {weekStart}</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="sm" variant="outline" onClick={() => onWeekChange(-7)}>← Prev</Button>
+          <Button size="sm" variant="outline" onClick={() => onWeekChange(7)}>Next →</Button>
+        </div>
+      </div>
+      {loading
+        ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner size={24} /></div>
+        : rows.length === 0
+          ? <EmptyState icon="📊" title="No attendance recorded this week" />
+          : rows.map(r => (
+              <div key={r.employee.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
+                <Avatar initials={r.employee.avatar_initials} size={30} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.employee.full_name}</div>
+                  <div style={{ fontSize: 11, color: C.textLight }}>{r.employee.department}</div>
+                </div>
+                <div style={{ fontSize: 12, color: C.textMid }}>{r.sessionDays} day(s) logged</div>
+                <div style={{ fontSize: 12, color: C.textMid }}>{r.wfhDays} WFH</div>
+                <div style={{ fontWeight: 700, color: C.brand }}>{r.totalHours}h</div>
+              </div>
+            ))
+      }
+    </Card>
+  )
+}
+
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function HRAttendancePage() {
   const { employee } = useAuth()
@@ -260,6 +315,11 @@ export default function HRAttendancePage() {
   const [employees, setEmployees]= useState([])
   const [holidays,  setHolidays] = useState([])
   const [loading,   setLoading]  = useState(true)
+  const [weekStart, setWeekStart] = useState(getWeekStart(todayISO()))
+
+  function shiftWeek(days) {
+    setWeekStart(w => addDaysISO(w, days))
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -303,9 +363,11 @@ export default function HRAttendancePage() {
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: C.surface, padding: 6, borderRadius: 10, width: 'fit-content', boxShadow: C.shadow }}>
         {[
           { id: 'today',    label: "Today's View" },
+          { id: 'weekly',   label: 'Weekly' },
           { id: 'monthly',  label: 'Monthly Report' },
           { id: 'holidays', label: 'Holidays' },
           { id: 'override', label: '✏️ Override Times' },
+          { id: 'regularization', label: 'Regularization Queue' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 20px', borderRadius: 7, border: 'none',
@@ -318,6 +380,8 @@ export default function HRAttendancePage() {
       </div>
 
       {tab === 'today' && <TodayOverview records={todayRecs} employees={employees} />}
+
+      {tab === 'weekly' && <WeeklyView weekStart={weekStart} onWeekChange={shiftWeek} />}
 
       {tab === 'monthly' && (
         <>
@@ -336,6 +400,8 @@ export default function HRAttendancePage() {
       )}
 
       {tab === 'override' && <AttendanceOverridePanel reviewerId={employee?.id} /> }
+
+      {tab === 'regularization' && <RegularizationQueue mode="admin" reviewerId={employee?.id} />}
 
       {tab === 'holidays' && (
         <HolidaysPanel
