@@ -8,11 +8,14 @@ import DateRangePicker from '../../components/DateRangePicker'
 import {
   getAllEmployees,
   getAllLeaveBalances,
+  getAllLeaveRequests,
+  updateLeaveStatus,
   hrAdjustLeave,
   hrSetLeaveBalance,
   hrRecordLeave,
   getLeaveAdjustmentHistory,
 } from '../../lib/api'
+import { notifyLeaveDecision } from '../../lib/api.notifications'
 
 // ── Leave balance row for one employee ───────────────────────────────────────
 function EmployeeLeaveRow({ employee, balances, onEdit, onRecord }) {
