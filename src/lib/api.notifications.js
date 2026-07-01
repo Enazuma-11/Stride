@@ -283,7 +283,7 @@ export async function runDailyChecks(reviewerEmployeeId) {
   }
 
   // ── Weekly attendance report ready (every Monday) ──────────────────────────
-  if (today.getDay() === 1) { // 0=Sun, 1=Mon
+  if (today.getUTCDay() === 1) { // 0=Sun, 1=Mon (UTC, matching this feature's date convention)
     const { count: alreadyNotifiedThisWeek } = await supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
