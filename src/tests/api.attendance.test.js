@@ -211,3 +211,11 @@ describe('getWeekStart', () => {
     expect(getWeekStart('2026-06-21')).toBe('2026-06-15')
   })
 })
+
+// ── hrSetSessions ────────────────────────────────────────────────────────────
+describe('hrSetSessions', () => {
+  it('throws when no sessions are provided', async () => {
+    const { hrSetSessions } = await import('../lib/api.attendance')
+    await expect(hrSetSessions('emp-1', '2026-06-17', [], 'reviewer-1', 'test')).rejects.toThrow(/at least one session/i)
+  })
+})

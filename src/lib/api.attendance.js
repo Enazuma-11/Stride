@@ -342,23 +342,61 @@ export async function deleteHoliday(id) {
   if (error) throw error
 }
 
-// ─── HR: MANUALLY OVERRIDE ATTENDANCE STATUS ─────────────────────────────────
+// ─── HR/ADMIN: DIRECT SESSION OVERRIDE ───────────────────────────────────────
 
-export async function overrideAttendance(employeeId, date, status, note) {
-  const { data, error } = await supabase
-    .from('attendance')
-    .upsert({
-      employee_id:   employeeId,
-      date,
-      status,
-      hr_override:   true,
-      override_note: note || null,
-    }, { onConflict: 'employee_id,date' })
+// Replaces the entire set of sessions for one employee/date with `sessions`
+// (array of { checkIn: ISOString, checkOut: ISOString, isWFH: bool }), logs
+// the change to attendance_overrides for audit, and recomputes the aggregate.
+// This is the same underlying mechanism used when Admin applies an approved
+// regularization item (see Task 8's adminApplyItem).
+export async function hrSetSessions(employeeId, date, sessions, reviewerId, reason) {
+  if (!sessions || sessions.length === 0) {
+    throw new Error('Provide at least one session (check-in/check-out pair).')
+  }
+  if (!reason || !reason.trim()) {
+    throw new Error('A reason is required for audit trail.')
+  }
+
+  const windowStart = `${date}T00:00:00.000Z`
+  const windowEnd   = `${addDaysISO(date, 1)}T00:00:00.000Z`
+
+  const { data: existingSessions } = await supabase
+    .from('attendance_sessions')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .gte('check_in', windowStart)
+    .lt('check_in', windowEnd)
+
+  if (existingSessions?.length) {
+    await supabase.from('attendance_sessions').delete().in('id', existingSessions.map(s => s.id))
+  }
+
+  const { data: inserted, error } = await supabase
+    .from('attendance_sessions')
+    .insert(sessions.map(s => ({
+      employee_id: employeeId,
+      check_in:    s.checkIn,
+      check_out:   s.checkOut,
+      is_wfh:      !!s.isWFH,
+    })))
     .select()
-    .single()
-
   if (error) throw error
-  return data
+
+  await supabase.from('attendance_overrides').insert({
+    attendance_id: null,
+    employee_id:   employeeId,
+    date,
+    field_changed: 'sessions',
+    old_value:     JSON.stringify(existingSessions || []),
+    new_value:     JSON.stringify(inserted),
+    reason,
+    overridden_by: reviewerId,
+  })
+
+  const attendance = await recomputeDayAggregate(employeeId, date)
+  await supabase.from('attendance').update({ hr_override: true }).eq('id', attendance.id)
+
+  return { sessions: inserted, attendance }
 }
 
 // ─── WEEKLY HOURS ─────────────────────────────────────────────────────────────

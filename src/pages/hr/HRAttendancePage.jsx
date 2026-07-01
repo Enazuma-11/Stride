@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import {
   getTeamAttendanceByDate, getTeamMonthlyAttendance,
   getHolidays, addHoliday, deleteHoliday,
-  overrideAttendance, todayISO,
+  todayISO,
 } from '../../lib/api.attendance'
 import { getAllEmployees } from '../../lib/api'
 
