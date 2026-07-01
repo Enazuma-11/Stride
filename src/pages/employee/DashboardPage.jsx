@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getAllEmployees } from '../../lib/api'
 import OnboardingWizard from '../../components/OnboardingWizard'
 import { useResponsive, cols } from '../../lib/responsive'
-import { getTodayAttendance, getTeamAttendanceByDate, getHolidays, todayISO } from '../../lib/api.attendance'
+import { getTodayAttendance, getTeamAttendanceByDate, getHolidays, todayISO, getWeeklyHours, getWeekStart } from '../../lib/api.attendance'
 import { getAllLeaveRequests } from '../../lib/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,6 +44,23 @@ function BalanceCard({ lt, balance }) {
   )
 }
 
+// ── Weekly hours mini card ────────────────────────────────────────────────────
+function WeeklyHoursCard({ weekly }) {
+  if (!weekly) return null
+  const pct = Math.min(100, Math.round((weekly.totalHours / weekly.targetHours) * 100))
+  return (
+    <Card style={{ padding: '14px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>This Week</span>
+        <span style={{ fontSize: 11, color: C.textMid }}>{weekly.totalHours} / {weekly.targetHours} hrs</span>
+      </div>
+      <div style={{ height: 5, borderRadius: 6, background: C.border, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: C.brand, borderRadius: 6, transition: 'width 0.3s' }} />
+      </div>
+    </Card>
+  )
+}
+
 // ── Attendance status badge ───────────────────────────────────────────────────
 function AttendBadge({ status }) {
   const s = ATTENDANCE_STATUSES.find(a => a.value === status) || { icon: '❓', color: C.textLight, bg: C.surfaceAlt, label: 'Unknown' }
@@ -55,7 +72,7 @@ function AttendBadge({ status }) {
 }
 
 // ── EMPLOYEE DASHBOARD ────────────────────────────────────────────────────────
-function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays, setShowWizard }) {
+function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays, weekly, setShowWizard }) {
   const navigate = useNavigate()
   const r = useResponsive()
   const pending  = requests.filter(r => r.status === 'pending').length
@@ -78,6 +95,9 @@ function EmployeeDashboard({ employee, balances, requests, announcements, todayA
           </Card>
         ))}
       </div>
+
+      {/* Weekly hours */}
+      <WeeklyHoursCard weekly={weekly} />
 
       {/* Leave balances */}
       <div>
@@ -445,6 +465,7 @@ export default function DashboardPage() {
   const [myRequests,     setMyRequests]     = useState([])
   const [announcements,  setAnnouncements]  = useState([])
   const [todayAtt,       setTodayAtt]       = useState(null)
+  const [weekly,         setWeekly]         = useState(null)
   const [employees,      setEmployees]      = useState([])
   const [teamAttendance, setTeamAttendance] = useState([])
   const [allLeaves,      setAllLeaves]      = useState([])
@@ -462,6 +483,7 @@ export default function DashboardPage() {
       getAnnouncements(),
       getTodayAttendance(employee.id),
       getHolidays(year),
+      getWeeklyHours(employee.id, getWeekStart(todayISO())),
     ]
 
     const adminLoads = isHR ? [
@@ -480,9 +502,9 @@ export default function DashboardPage() {
     }
 
     Promise.all([...baseLoads, ...adminLoads])
-      .then(([b, r, a, att, hols, emps, teamAtt, leaves]) => {
+      .then(([b, r, a, att, hols, weeklyHours, emps, teamAtt, leaves]) => {
         setBalances(b); setMyRequests(r); setAnnouncements(a)
-        setTodayAtt(att); setHolidays(hols)
+        setTodayAtt(att); setHolidays(hols); setWeekly(weeklyHours)
         if (isHR) { setEmployees(emps); setTeamAttendance(teamAtt); setAllLeaves(leaves) }
       })
       .finally(() => setLoading(false))
@@ -520,6 +542,7 @@ export default function DashboardPage() {
             announcements={announcements}
             todayAtt={todayAtt}
             holidays={holidays}
+            weekly={weekly}
             setShowWizard={setShowWizard}
           />
       }
