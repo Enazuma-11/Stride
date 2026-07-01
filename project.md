@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-06-22
+**Last updated:** 2026-07-01
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,12 +19,26 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`38df042` — Unpaid leave - warning on apply, auto-split on approval, LOP tracking
+`e6f2236` — Add design spec for attendance overhaul
 
 ## LOCALLY BUILT (NOT YET PUSHED)
-- `src/tests/api.announcements.test.js` — email tests rewritten with proper mocks
-- `src/tests/api.leave.test.js` — leave approval test updated for direct balance update
-- `project.md` — this file
+- (nothing pending — working tree matches origin/main)
+
+## IN PROGRESS
+
+### 🔵 Attendance Overhaul (design approved, implementation not started)
+Spec: `docs/superpowers/specs/2026-07-01-attendance-overhaul-design.md`
+- Drops late-mark entirely (status judged on total hours worked only)
+- Multiple check-in/out sessions per day (capped at 5), midnight-spanning sessions split across the two calendar days
+- Employee regularization requests (proposed times + reason, multi-date) → manager approve/reject per date → Admin/HR applies correction
+- HR/Admin direct session-level override (extends `AttendanceOverridePanel.jsx`)
+- Weekly hours widget (employee, on Attendance page + Dashboard) and Weekly report tab + Monday notification (HR/Admin)
+- Monthly regularization reminder, 25th → month-end
+- New tables needed: `attendance_sessions`, `attendance_regularization_requests`, `attendance_regularization_items`
+- **Next step:** writing-plans skill → implementation plan, not yet executed
+
+### 🔵 Leave / Holiday Overhaul (not yet designed)
+Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-yearly (Jan/July) opt-in holiday calendar with 2-week submission windows. Queued as its own design after Attendance implementation lands.
 
 ---
 
@@ -70,7 +84,7 @@
 
 ### ✅ Auth
 - Login / Logout (window.location.href for reliable redirect)
-- Register (self-registration with pending approval gate)
+- Register (self-registration with pending approval gate) — fixed 2026-07-01: create-employee edge function was blocking self_register with platform JWT gate + a code-level "missing auth header" check that ran unconditionally; self_register now correctly skips both
 - Set Password
 - ProtectedRoute: pending_approval, rejected, onboarding form, requireHR gates
 - 2FA TOTP — requires MFA enabled in Supabase dashboard
@@ -121,6 +135,9 @@
 - Saves to profile, payroll, compliance tables
 - Notifies HR on submission
 - Gate: employees blocked until form submitted
+- Fixed 2026-07-01: gender/marital_status now normalized to lowercase/underscored enum values before saving (was violating DB CHECK constraints on every submission)
+- Fixed 2026-07-01: document_type CHECK constraint widened to match actual upload types; Test/Dev's employee_documents table + storage RLS policies synced to match Production
+- Documents step now asks for 10th Marksheet, 12th Marksheet (both required), Graduation Certificate, Post-Graduation Certificate (at least one of the two required) — replaces the old single "Education Certificate" upload
 
 ### ✅ Payslips
 - HR generates per employee/month with all components
@@ -216,6 +233,8 @@
 | policy_categories RLS (manual SQL) | ✅ |
 | lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
 | supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
+| supabase_migration_onboarding_documents_fix.sql | ✅ |
+| supabase_migration_education_docs.sql | ✅ |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
 
@@ -226,6 +245,10 @@
 | policy_categories RLS (manual SQL) | ✅ |
 | lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
 | supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
+| supabase_migration_onboarding_documents_fix.sql | ✅ |
+| supabase_migration_employee_documents_schema_sync.sql | ✅ (Test-only fix — Production already had these columns) |
+| supabase_migration_storage_policies_test_sync.sql | ✅ (Test-only fix — Production already had these policies) |
+| supabase_migration_education_docs.sql | ✅ |
 
 ---
 
