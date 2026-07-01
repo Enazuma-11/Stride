@@ -1,5 +1,12 @@
 import { supabase } from './supabase'
 
+// Fires from the 25th through the last day of the month (inclusive).
+export function shouldSendMonthlyRegularizationReminder(now = new Date()) {
+  const day = now.getUTCDate()
+  const lastDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  return day >= 25 && day <= lastDayOfMonth
+}
+
 // ─── GET NOTIFICATIONS FOR CURRENT EMPLOYEE ───────────────────────────────────
 export async function getMyNotifications(employeeId, limit = 20) {
   const { data, error } = await supabase
@@ -225,6 +232,72 @@ export async function runDailyChecks(reviewerEmployeeId) {
         title:   `🎉 ${holiday.name} in 3 days`,
         message: `${holiday.name} is on ${new Date(holiday.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}. ${holiday.type === 'mandatory' ? 'Mandatory holiday.' : 'Optional holiday.'}`,
         metadata: { holiday_id: holiday.id, date: holiday.date },
+      })
+    }
+  }
+
+  // ── Monthly regularization reminder (25th → month-end) ────────────────────
+  if (shouldSendMonthlyRegularizationReminder(today)) {
+    const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+
+    const { data: unresolvedDays } = await supabase
+      .from('attendance')
+      .select('employee_id, date, status')
+      .in('status', ['half_day', 'absent'])
+      .gte('date', monthStart)
+      .lte('date', todayStr)
+
+    const { data: alreadyRequestedItems } = await supabase
+      .from('attendance_regularization_items')
+      .select('date, request:request_id(employee_id)')
+      .gte('date', monthStart)
+
+    const requestedSet = new Set(
+      (alreadyRequestedItems || []).map(i => `${i.request?.employee_id}:${i.date}`)
+    )
+
+    const byEmployee = {}
+    for (const row of unresolvedDays || []) {
+      if (requestedSet.has(`${row.employee_id}:${row.date}`)) continue
+      byEmployee[row.employee_id] = (byEmployee[row.employee_id] || 0) + 1
+    }
+
+    for (const [employeeId, count] of Object.entries(byEmployee)) {
+      const { count: alreadyNotifiedToday } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employeeId)
+        .eq('type', 'attendance_regularization_reminder')
+        .gte('created_at', todayStr)
+
+      if (alreadyNotifiedToday === 0) {
+        await createNotification({
+          employeeId,
+          type: 'attendance_regularization_reminder',
+          title: 'Attendance Regularization Reminder',
+          message: `You have ${count} day(s) this month that may need regularization — submit before month-end.`,
+          metadata: { count },
+        })
+      }
+    }
+  }
+
+  // ── Weekly attendance report ready (every Monday) ──────────────────────────
+  if (today.getDay() === 1) { // 0=Sun, 1=Mon
+    const { count: alreadyNotifiedThisWeek } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('employee_id', reviewerEmployeeId)
+      .eq('type', 'attendance_weekly_report_ready')
+      .gte('created_at', todayStr)
+
+    if (alreadyNotifiedThisWeek === 0) {
+      await createNotification({
+        employeeId: reviewerEmployeeId,
+        type: 'attendance_weekly_report_ready',
+        title: 'Weekly Attendance Report Ready',
+        message: 'The attendance Weekly view has been updated for last week.',
+        metadata: {},
       })
     }
   }
