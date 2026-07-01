@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { createNotification } from './api.notifications'
+import { hrSetSessions } from './api.attendance'
 
 function timeToISO(dateStr, timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
@@ -92,4 +93,156 @@ export async function withdrawRegularizationRequest(requestId, employeeId) {
     throw new Error('This request has already been reviewed and can no longer be withdrawn.')
   }
   await supabase.from('attendance_regularization_requests').delete().eq('id', requestId)
+}
+
+// ─── MANAGER QUEUE ────────────────────────────────────────────────────────────
+
+export async function getManagerPendingItems(managerId) {
+  const { data: reports } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('manager_id', managerId)
+  const reportIds = (reports || []).map(r => r.id)
+  if (reportIds.length === 0) return []
+
+  const { data: items, error } = await supabase
+    .from('attendance_regularization_items')
+    .select('*, request:request_id(id, employee_id, employee:employee_id(full_name, avatar_initials))')
+    .eq('manager_decision', 'pending')
+    .order('date', { ascending: false })
+  if (error) throw error
+
+  return (items || []).filter(item => reportIds.includes(item.request?.employee_id))
+}
+
+async function recalcRequestStatus(requestId) {
+  const { data: items } = await supabase
+    .from('attendance_regularization_items')
+    .select('manager_decision, admin_decision')
+    .eq('request_id', requestId)
+
+  const rows = items || []
+  let status = 'completed'
+  if (rows.some(i => i.manager_decision === 'pending')) status = 'pending_manager'
+  else if (rows.some(i => i.manager_decision === 'approved' && !i.admin_decision)) status = 'pending_admin'
+
+  await supabase.from('attendance_regularization_requests').update({ status }).eq('id', requestId)
+}
+
+export async function managerDecideItem(itemId, decision, managerId) {
+  if (!['approved', 'rejected'].includes(decision)) {
+    throw new Error('Invalid decision — must be "approved" or "rejected".')
+  }
+
+  const { data: item, error } = await supabase
+    .from('attendance_regularization_items')
+    .update({ manager_decision: decision, decided_at: new Date().toISOString() })
+    .eq('id', itemId)
+    .select('*, request:request_id(id, employee_id)')
+    .single()
+  if (error) throw error
+
+  await recalcRequestStatus(item.request.id)
+
+  if (decision === 'rejected') {
+    await createNotification({
+      employeeId: item.request.employee_id,
+      type: 'attendance_regularization_decided',
+      title: 'Regularization Request Rejected',
+      message: `Your manager rejected your regularization request for ${item.date}.`,
+      metadata: { item_id: itemId },
+    })
+  } else {
+    const { data: hrList } = await supabase
+      .from('employees')
+      .select('id')
+      .in('role_type', ['hr', 'admin'])
+      .eq('status', 'active')
+      .limit(1)
+    if (hrList?.[0]?.id) {
+      await createNotification({
+        employeeId: hrList[0].id,
+        type: 'attendance_regularization_pending_admin',
+        title: 'Regularization Approved — Awaiting Admin',
+        message: `A manager-approved regularization for ${item.date} is awaiting your final action.`,
+        metadata: { item_id: itemId },
+      })
+    }
+  }
+
+  return item
+}
+
+// ─── ADMIN/HR QUEUE ───────────────────────────────────────────────────────────
+
+export async function getAdminPendingItems(excludeEmployeeId) {
+  const { data: items, error } = await supabase
+    .from('attendance_regularization_items')
+    .select('*, request:request_id(id, employee_id, employee:employee_id(full_name, avatar_initials))')
+    .eq('manager_decision', 'approved')
+    .is('admin_decision', null)
+    .order('date', { ascending: false })
+  if (error) throw error
+  // Never let a reviewer see/apply their own regularization request in the admin queue.
+  return (items || []).filter(item => item.request?.employee_id !== excludeEmployeeId)
+}
+
+export async function adminApplyItem(itemId, finalCheckIn, finalCheckOut, adminId) {
+  if (!finalCheckIn || !finalCheckOut) {
+    throw new Error('Both check-in and check-out are required to apply this correction.')
+  }
+
+  const { data: item, error } = await supabase
+    .from('attendance_regularization_items')
+    .select('*, request:request_id(id, employee_id)')
+    .eq('id', itemId)
+    .single()
+  if (error) throw error
+
+  await hrSetSessions(
+    item.request.employee_id,
+    item.date,
+    [{ checkIn: finalCheckIn, checkOut: finalCheckOut, isWFH: false }],
+    adminId,
+    `Applied from regularization request (item ${itemId})`
+  )
+
+  await supabase
+    .from('attendance_regularization_items')
+    .update({ admin_decision: 'approved', decided_at: new Date().toISOString() })
+    .eq('id', itemId)
+
+  await recalcRequestStatus(item.request.id)
+
+  await createNotification({
+    employeeId: item.request.employee_id,
+    type: 'attendance_regularization_decided',
+    title: 'Attendance Corrected',
+    message: `Your attendance for ${item.date} has been corrected as requested.`,
+    metadata: { item_id: itemId },
+  })
+
+  return item
+}
+
+export async function adminRejectItem(itemId, adminId) {
+  const { data: item, error } = await supabase
+    .from('attendance_regularization_items')
+    .update({ admin_decision: 'rejected', decided_at: new Date().toISOString() })
+    .eq('id', itemId)
+    .select('*, request:request_id(id, employee_id)')
+    .single()
+  if (error) throw error
+
+  await recalcRequestStatus(item.request.id)
+
+  await createNotification({
+    employeeId: item.request.employee_id,
+    type: 'attendance_regularization_decided',
+    title: 'Regularization Request Rejected',
+    message: `Admin rejected your regularization request for ${item.date}.`,
+    metadata: { item_id: itemId },
+  })
+
+  return item
 }

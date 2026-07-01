@@ -5,10 +5,20 @@ import {
   submitRegularizationRequest,
   getMyRegularizationRequests,
   withdrawRegularizationRequest,
+  getManagerPendingItems,
+  managerDecideItem,
+  getAdminPendingItems,
+  adminApplyItem,
+  adminRejectItem,
 } from '../lib/api.attendanceRegularization'
+import { hrSetSessions } from '../lib/api.attendance'
 
 vi.mock('../lib/api.notifications', () => ({
   createNotification: vi.fn(() => Promise.resolve({})),
+}))
+
+vi.mock('../lib/api.attendance', () => ({
+  hrSetSessions: vi.fn(() => Promise.resolve({})),
 }))
 
 beforeEach(() => {
@@ -232,5 +242,425 @@ describe('withdrawRegularizationRequest', () => {
     })
 
     await expect(withdrawRegularizationRequest('req-1', 'emp-1')).rejects.toThrow('Not found')
+  })
+})
+
+// ── getManagerPendingItems ───────────────────────────────────────────────────
+describe('getManagerPendingItems', () => {
+  it('returns an empty array when the manager has no direct reports', async () => {
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+    })
+
+    const result = await getManagerPendingItems('mgr-1')
+    expect(result).toEqual([])
+  })
+
+  it('returns only pending items belonging to the manager\'s direct reports', async () => {
+    const reports = [{ id: 'emp-1' }, { id: 'emp-2' }]
+    const items = [
+      { id: 'item-1', manager_decision: 'pending', request: { employee_id: 'emp-1' } },
+      { id: 'item-2', manager_decision: 'pending', request: { employee_id: 'emp-9' } }, // not a report
+    ]
+
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: reports, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: items, error: null }),
+      })
+
+    const result = await getManagerPendingItems('mgr-1')
+    expect(result).toEqual([items[0]])
+  })
+
+  it('throws on Supabase error fetching items', async () => {
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: [{ id: 'emp-1' }], error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+      })
+
+    await expect(getManagerPendingItems('mgr-1')).rejects.toThrow('DB error')
+  })
+})
+
+// ── managerDecideItem ─────────────────────────────────────────────────────────
+describe('managerDecideItem', () => {
+  it('rejects an invalid decision value', async () => {
+    await expect(managerDecideItem('item-1', 'maybe', 'mgr-1')).rejects.toThrow(/approved.*rejected|invalid decision/i)
+  })
+
+  it('does not touch the database when the decision is invalid', async () => {
+    await expect(managerDecideItem('item-1', 'maybe', 'mgr-1')).rejects.toThrow()
+    expect(supabase.from).not.toHaveBeenCalled()
+  })
+
+  it('approves an item, recalculates request status, and notifies HR/admin', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', manager_decision: 'approved', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [{ manager_decision: 'approved', admin_decision: null }]
+    const hrList = [{ id: 'hr-1' }]
+
+    supabase.from
+      .mockReturnValueOnce({
+        // update item
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        // recalcRequestStatus: fetch items
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        // recalcRequestStatus: update request status
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+      .mockReturnValueOnce({
+        // fetch hr/admin recipient
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
+      })
+
+    const result = await managerDecideItem('item-1', 'approved', 'mgr-1')
+
+    expect(result).toEqual(item)
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      employeeId: 'hr-1',
+      type: 'attendance_regularization_pending_admin',
+    }))
+  })
+
+  it('rejects an item, recalculates request status, and notifies the employee', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', manager_decision: 'rejected', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [{ manager_decision: 'rejected', admin_decision: null }]
+
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+
+    const result = await managerDecideItem('item-1', 'rejected', 'mgr-1')
+
+    expect(result).toEqual(item)
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      employeeId: 'emp-1',
+      type: 'attendance_regularization_decided',
+      title: 'Regularization Request Rejected',
+    }))
+  })
+
+  it('throws on Supabase error updating the item', async () => {
+    supabase.from.mockReturnValueOnce({
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+    })
+
+    await expect(managerDecideItem('item-1', 'approved', 'mgr-1')).rejects.toThrow('DB error')
+  })
+})
+
+// ── getAdminPendingItems ──────────────────────────────────────────────────────
+describe('getAdminPendingItems', () => {
+  it('excludes items belonging to the excluded employee (self-approval prevention)', async () => {
+    const items = [
+      { id: 'item-1', request: { employee_id: 'hr-1' } }, // reviewer's own request — must be excluded
+      { id: 'item-2', request: { employee_id: 'emp-2' } },
+    ]
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: items, error: null }),
+    })
+
+    const result = await getAdminPendingItems('hr-1')
+    expect(result).toEqual([items[1]])
+    expect(result.some(i => i.request.employee_id === 'hr-1')).toBe(false)
+  })
+
+  it('returns all items when excludeEmployeeId matches none of them', async () => {
+    const items = [
+      { id: 'item-1', request: { employee_id: 'emp-1' } },
+      { id: 'item-2', request: { employee_id: 'emp-2' } },
+    ]
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: items, error: null }),
+    })
+
+    const result = await getAdminPendingItems('someone-else')
+    expect(result).toEqual(items)
+  })
+
+  it('returns an empty array when there is no data', async () => {
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const result = await getAdminPendingItems('admin-1')
+    expect(result).toEqual([])
+  })
+
+  it('throws on Supabase error', async () => {
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+    })
+
+    await expect(getAdminPendingItems('admin-1')).rejects.toThrow('DB error')
+  })
+})
+
+// ── adminApplyItem ────────────────────────────────────────────────────────────
+describe('adminApplyItem', () => {
+  it('requires finalCheckIn and finalCheckOut', async () => {
+    await expect(adminApplyItem('item-1', null, null, 'admin-1')).rejects.toThrow(/check-in.*check-out|required/i)
+  })
+
+  it('requires finalCheckIn when only finalCheckOut is given', async () => {
+    await expect(adminApplyItem('item-1', null, '2026-06-17T18:00:00.000Z', 'admin-1')).rejects.toThrow(/check-in.*check-out|required/i)
+  })
+
+  it('requires finalCheckOut when only finalCheckIn is given', async () => {
+    await expect(adminApplyItem('item-1', '2026-06-17T09:00:00.000Z', null, 'admin-1')).rejects.toThrow(/check-in.*check-out|required/i)
+  })
+
+  it('does not touch the database when validation fails', async () => {
+    await expect(adminApplyItem('item-1', null, null, 'admin-1')).rejects.toThrow()
+    expect(supabase.from).not.toHaveBeenCalled()
+  })
+
+  it('calls hrSetSessions with the correct argument order and applies the correction', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [{ manager_decision: 'approved', admin_decision: 'approved' }]
+    const checkIn = '2026-06-17T09:00:00.000Z'
+    const checkOut = '2026-06-17T18:00:00.000Z'
+
+    supabase.from
+      .mockReturnValueOnce({
+        // fetch item
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        // update item admin_decision
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+      .mockReturnValueOnce({
+        // recalcRequestStatus: fetch items
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        // recalcRequestStatus: update request status
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+
+    const result = await adminApplyItem('item-1', checkIn, checkOut, 'admin-1')
+
+    expect(hrSetSessions).toHaveBeenCalledWith(
+      'emp-1',
+      '2026-06-17',
+      [{ checkIn, checkOut, isWFH: false }],
+      'admin-1',
+      expect.stringContaining('item-1')
+    )
+    expect(result).toEqual(item)
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      employeeId: 'emp-1',
+      type: 'attendance_regularization_decided',
+      title: 'Attendance Corrected',
+    }))
+  })
+
+  it('throws on Supabase error fetching the item', async () => {
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+    })
+
+    await expect(adminApplyItem('item-1', '2026-06-17T09:00:00.000Z', '2026-06-17T18:00:00.000Z', 'admin-1')).rejects.toThrow('DB error')
+  })
+})
+
+// ── adminRejectItem ───────────────────────────────────────────────────────────
+describe('adminRejectItem', () => {
+  it('rejects the item, recalculates request status, and notifies the employee', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [{ manager_decision: 'approved', admin_decision: 'rejected' }]
+
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+
+    const result = await adminRejectItem('item-1', 'admin-1')
+
+    expect(result).toEqual(item)
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      employeeId: 'emp-1',
+      type: 'attendance_regularization_decided',
+      title: 'Regularization Request Rejected',
+    }))
+  })
+
+  it('throws on Supabase error', async () => {
+    supabase.from.mockReturnValueOnce({
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+    })
+
+    await expect(adminRejectItem('item-1', 'admin-1')).rejects.toThrow('DB error')
+  })
+})
+
+// ── recalcRequestStatus rollup (via managerDecideItem / adminApplyItem behavior) ─
+describe('request status rollup', () => {
+  it('sets status to pending_manager when any item is still manager-pending', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', manager_decision: 'approved', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [
+      { manager_decision: 'approved', admin_decision: null },
+      { manager_decision: 'pending', admin_decision: null },
+    ]
+    const hrList = [{ id: 'hr-1' }]
+    let capturedUpdate
+
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
+      })
+
+    await managerDecideItem('item-1', 'approved', 'mgr-1')
+    expect(capturedUpdate).toEqual({ status: 'pending_manager' })
+  })
+
+  it('sets status to pending_admin when all items are manager-approved but not yet admin-decided', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', manager_decision: 'approved', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [
+      { manager_decision: 'approved', admin_decision: null },
+      { manager_decision: 'approved', admin_decision: null },
+    ]
+    const hrList = [{ id: 'hr-1' }]
+    let capturedUpdate
+
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
+      })
+
+    await managerDecideItem('item-1', 'approved', 'mgr-1')
+    expect(capturedUpdate).toEqual({ status: 'pending_admin' })
+  })
+
+  it('sets status to completed when all items have both manager and admin decisions (none pending)', async () => {
+    const item = { id: 'item-1', date: '2026-06-17', request: { id: 'req-1', employee_id: 'emp-1' } }
+    const rollupItems = [
+      { manager_decision: 'approved', admin_decision: 'approved' },
+      { manager_decision: 'rejected', admin_decision: null },
+    ]
+    let capturedUpdate
+
+    supabase.from
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: item, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: rollupItems, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+      })
+
+    await managerDecideItem('item-1', 'rejected', 'mgr-1')
+    expect(capturedUpdate).toEqual({ status: 'completed' })
   })
 })
