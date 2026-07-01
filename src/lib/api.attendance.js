@@ -362,15 +362,14 @@ export async function hrSetSessions(employeeId, date, sessions, reviewerId, reas
 
   const { data: existingSessions } = await supabase
     .from('attendance_sessions')
-    .select('id')
+    .select('id, check_in, check_out, is_wfh')
     .eq('employee_id', employeeId)
     .gte('check_in', windowStart)
     .lt('check_in', windowEnd)
 
-  if (existingSessions?.length) {
-    await supabase.from('attendance_sessions').delete().in('id', existingSessions.map(s => s.id))
-  }
-
+  // Insert the new sessions BEFORE deleting the old ones. If the insert
+  // fails, the old sessions remain untouched — leaving the day recoverable
+  // rather than silently wiping it (data-loss risk on partial failure).
   const { data: inserted, error } = await supabase
     .from('attendance_sessions')
     .insert(sessions.map(s => ({
@@ -381,6 +380,10 @@ export async function hrSetSessions(employeeId, date, sessions, reviewerId, reas
     })))
     .select()
   if (error) throw error
+
+  if (existingSessions?.length) {
+    await supabase.from('attendance_sessions').delete().in('id', existingSessions.map(s => s.id))
+  }
 
   await supabase.from('attendance_overrides').insert({
     attendance_id: null,
