@@ -16,10 +16,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify the requesting user is HR/Admin
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) throw new Error('Missing authorization header')
-
     // Create admin client with service role key
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL'),
@@ -27,31 +23,10 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Create regular client to verify the caller's role
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_ANON_KEY'),
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    // Verify caller is HR or Admin
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) throw new Error('Unauthorized')
-
-    const { data: caller, error: callerError } = await supabaseClient
-      .from('employees')
-      .select('role_type')
-      .eq('user_id', user.id)
-      .single()
-
-    if (callerError || !['hr', 'admin'].includes(caller?.role_type)) {
-      throw new Error('Only HR or Admin can create employee accounts')
-    }
-
     // Parse request body
     const body = await req.json()
     const {
-      flow,               // 'create_with_password' | 'invite'
+      flow,               // 'create_with_password' | 'invite' | 'self_register' | 'approve_employee'
       fullName,
       email,
       tempPassword,
@@ -66,6 +41,33 @@ Deno.serve(async (req) => {
       gender,
       college,
     } = body
+
+    // Every flow except self_register acts on behalf of HR/Admin and must
+    // be authenticated. self_register is the one legitimately-anonymous
+    // path (a new employee signing up before HR has approved them).
+    if (flow !== 'self_register') {
+      const authHeader = req.headers.get('Authorization')
+      if (!authHeader) throw new Error('Missing authorization header')
+
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL'),
+        Deno.env.get('SUPABASE_ANON_KEY'),
+        { global: { headers: { Authorization: authHeader } } }
+      )
+
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+      if (userError || !user) throw new Error('Unauthorized')
+
+      const { data: caller, error: callerError } = await supabaseClient
+        .from('employees')
+        .select('role_type')
+        .eq('user_id', user.id)
+        .single()
+
+      if (callerError || !['hr', 'admin'].includes(caller?.role_type)) {
+        throw new Error('Only HR or Admin can create employee accounts')
+      }
+    }
 
     let authUser
 
