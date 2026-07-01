@@ -90,6 +90,8 @@ export const WORK_HOURS_BY_TYPE = {
   intern:     { fullDay: 5.5, halfDay: 2.75 },
 }
 
+export const MAX_SESSIONS_PER_DAY = 5
+
 export const EMPLOYEE_TYPES = [
   { value: 'permanent',  label: 'Permanent Employee' },
   { value: 'intern',     label: 'Intern'             },

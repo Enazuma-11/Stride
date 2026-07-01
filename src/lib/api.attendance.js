@@ -3,38 +3,109 @@ import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_START_HOUR, LATE_MARK_MINUTES, WOR
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-function computeStatus(checkIn, checkOut, isWFH, employeeType = 'permanent') {
-  if (!checkIn) return 'absent'
-  const inTime  = new Date(checkIn)
-  const outTime = checkOut ? new Date(checkOut) : null
+// Hours of a session that fall within the UTC calendar day `dateStr` (YYYY-MM-DD).
+// Handles sessions that span midnight by clipping to the day's [00:00, 24:00) window.
+export function sessionHoursForDate(checkIn, checkOut, dateStr) {
+  if (!checkIn || !checkOut) return 0
+  const dayStart = new Date(`${dateStr}T00:00:00.000Z`)
+  const dayEnd   = new Date(dayStart.getTime() + 86400000)
+  const inTime   = new Date(checkIn)
+  const outTime  = new Date(checkOut)
+  const start = inTime > dayStart ? inTime : dayStart
+  const end   = outTime < dayEnd ? outTime : dayEnd
+  const ms = end - start
+  if (ms <= 0) return 0
+  return Math.round((ms / 3600000) * 10) / 10
+}
 
-  // Use correct thresholds based on employee type
-  const policy     = WORK_HOURS_BY_TYPE[employeeType] || WORK_HOURS_BY_TYPE.permanent
-  const fullDay    = policy.fullDay
-  const halfDay    = policy.halfDay
-  const isFlexible = employeeType === 'intern' || employeeType === 'contractor'
+// Derives a day's attendance status purely from total hours worked — no late-mark concept.
+export function deriveDailyStatus(totalHours, isWFH, hasOpenSession, employeeType = 'permanent') {
+  if (hasOpenSession) return isWFH ? 'wfh' : 'present'
+  if (totalHours <= 0) return 'absent'
+  const policy = WORK_HOURS_BY_TYPE[employeeType] || WORK_HOURS_BY_TYPE.permanent
+  if (totalHours >= policy.fullDay) return isWFH ? 'wfh' : 'present'
+  return 'half_day'
+}
 
-  // Late mark only applies to non-flexible employees
-  let isLate = false
-  if (!isFlexible) {
-    const scheduledStart = new Date(inTime)
-    scheduledStart.setHours(WORK_START_HOUR, LATE_MARK_MINUTES, 0, 0)
-    isLate = inTime > scheduledStart
+function addDaysISO(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+// Recomputes the `attendance` aggregate row for one employee/date from
+// attendance_sessions. Sessions are looked up in a [date-1, date+1) window
+// on check_in so midnight-spanning sessions from the adjacent day are included.
+export async function recomputeDayAggregate(employeeId, date) {
+  const windowStart = `${addDaysISO(date, -1)}T00:00:00.000Z`
+  const windowEnd   = `${addDaysISO(date, 1)}T00:00:00.000Z`
+
+  const { data: sessions, error } = await supabase
+    .from('attendance_sessions')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .gte('check_in', windowStart)
+    .lt('check_in', windowEnd)
+    .order('check_in', { ascending: true })
+  if (error) throw error
+
+  const relevant = sessions || []
+  let totalHours = 0
+  let hasOpenSession = false
+  let isWFH = false
+  let firstCheckIn = null
+  let lastCheckOut = null
+
+  for (const s of relevant) {
+    if (!s.check_out) {
+      hasOpenSession = true
+      if (s.is_wfh) isWFH = true
+      continue
+    }
+    const hours = sessionHoursForDate(s.check_in, s.check_out, date)
+    if (hours > 0) {
+      totalHours += hours
+      if (s.is_wfh) isWFH = true
+      if (!firstCheckIn || new Date(s.check_in) < new Date(firstCheckIn)) firstCheckIn = s.check_in
+      if (!lastCheckOut || new Date(s.check_out) > new Date(lastCheckOut)) lastCheckOut = s.check_out
+    }
+  }
+  totalHours = Math.round(totalHours * 10) / 10
+
+  const empType = await getEmployeeType(employeeId)
+  const status  = deriveDailyStatus(totalHours, isWFH, hasOpenSession, empType)
+
+  const { data: existing } = await supabase
+    .from('attendance')
+    .select('id, hr_override')
+    .eq('employee_id', employeeId)
+    .eq('date', date)
+    .maybeSingle()
+
+  // Don't let a live recompute clobber a day HR has manually overridden via hrSetSessions
+  // (hrSetSessions itself calls recomputeDayAggregate after rewriting sessions, so this
+  // only guards against a stray checkIn/checkOut recompute racing an override).
+  const { data: updated, error: upsertError } = await supabase
+    .from('attendance')
+    .upsert({
+      employee_id:  employeeId,
+      date,
+      check_in:     firstCheckIn,
+      check_out:    hasOpenSession ? null : lastCheckOut,
+      hours_worked: totalHours,
+      is_wfh:       isWFH,
+      status,
+      hr_override:  existing?.hr_override || false,
+    }, { onConflict: 'employee_id,date' })
+    .select()
+    .single()
+  if (upsertError) throw upsertError
+
+  if (status === 'half_day') {
+    await deductHalfDayLeave(employeeId, date)
   }
 
-  if (!outTime) return isFlexible ? (isWFH ? 'wfh' : 'present') : (isLate ? 'late_mark' : isWFH ? 'wfh' : 'present')
-
-  const hoursWorked = (outTime - inTime) / 3600000
-
-  if (hoursWorked >= fullDay) {
-    if (!isFlexible && isLate) return 'late_mark'
-    if (isWFH) return 'wfh'
-    return 'present'
-  }
-  if (hoursWorked >= halfDay) return 'half_day'
-  // Below half day threshold
-  if (isFlexible) return 'half_day'  // interns don't get late_mark, just half_day
-  return 'late_mark'
+  return updated
 }
 
 // ─── GET EMPLOYEE TYPE ────────────────────────────────────────────────────────
