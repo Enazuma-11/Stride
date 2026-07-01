@@ -10,6 +10,8 @@ import {
   formatTime, hoursWorked, todayISO,
 } from '../../lib/api.attendance'
 import RegularizationForm from '../../components/RegularizationForm'
+import RegularizationQueue from '../../components/RegularizationQueue'
+import { getAllEmployees } from '../../lib/api'
 
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
 function StatusBadge({ status, size = 'md' }) {
@@ -337,21 +339,23 @@ export default function AttendancePage() {
   const [error,     setError]     = useState('')
   const [tab,       setTab]       = useState('today')
   const [showRegularizationForm, setShowRegularizationForm] = useState(false)
+  const [employees, setEmployees] = useState([])
 
   const load = useCallback(async () => {
     if (!employee) return
     setLoading(true)
     try {
-      const [t, sess, open, wk, r, h] = await Promise.all([
+      const [t, sess, open, wk, r, h, emps] = await Promise.all([
         getTodayAttendance(employee.id),
         getTodaySessions(employee.id),
         getOpenSession(employee.id),
         getWeeklyHours(employee.id, getWeekStart(todayISO())),
         getMyMonthlyAttendance(employee.id, year, month),
         getHolidays(year),
+        getAllEmployees(),
       ])
       setToday(t); setSessions(sess); setOpenSession(open); setWeekly(wk)
-      setRecords(r); setHolidays(h)
+      setRecords(r); setHolidays(h); setEmployees(emps)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }, [employee, year, month])
@@ -395,6 +399,7 @@ export default function AttendancePage() {
   }
 
   const monthLabel = new Date(year, month - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+  const isManager = employees.some(e => e.manager_id === employee.id)
 
   if (loading) return (
     <AppShell title="Attendance">
@@ -498,6 +503,13 @@ export default function AttendancePage() {
           )}
           {tab === 'history' && <AttendanceTable records={records} />}
         </>
+      )}
+
+      {isManager && (
+        <div style={{ marginTop: 24 }}>
+          <SectionTitle>Team Regularization Requests</SectionTitle>
+          <RegularizationQueue mode="manager" reviewerId={employee.id} />
+        </div>
       )}
 
       {showRegularizationForm && (

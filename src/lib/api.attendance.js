@@ -161,6 +161,18 @@ export async function getTodaySessions(employeeId) {
   return data || []
 }
 
+export async function getSessionsForDate(employeeId, date) {
+  const { data, error } = await supabase
+    .from('attendance_sessions')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .gte('check_in', `${date}T00:00:00.000Z`)
+    .lt('check_in', `${addDaysISO(date, 1)}T00:00:00.000Z`)
+    .order('check_in', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
 export async function checkIn(employeeId, isWFH = false) {
   const open = await getOpenSession(employeeId)
   if (open) throw new Error('You are already checked in. Please check out first.')

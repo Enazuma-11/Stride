@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Card, Avatar, Button, Spinner, Alert, EmptyState } from '../components/ui'
-import { C, ATTENDANCE_STATUSES } from '../lib/constants'
-import { getTeamAttendanceByDate, todayISO } from '../lib/api.attendance'
-import { overrideCheckTime } from '../lib/api.profile'
+import { C } from '../lib/constants'
+import { getSessionsForDate, hrSetSessions, todayISO } from '../lib/api.attendance'
 import { getAllEmployees } from '../lib/api'
-import { supabase } from '../lib/supabase'
 
 function timeToISO(dateStr, timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
@@ -20,73 +18,40 @@ function isoToTime(isoStr) {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-function StatusBadge({ status }) {
-  const s = ATTENDANCE_STATUSES.find(a => a.value === status)
-  if (!s) return <span style={{ fontSize: 11, color: C.textLight }}>No record</span>
-  return (
-    <span style={{
-      background: s.bg, color: s.color,
-      fontSize: 10, fontWeight: 600, padding: '2px 8px',
-      borderRadius: 20, whiteSpace: 'nowrap',
-    }}>{s.icon} {s.label}</span>
-  )
-}
+function OverrideRow({ employee, date, reviewerId, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [sessions, setSessions] = useState([])
+  const [loaded, setLoaded] = useState(false)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-function OverrideRow({ record, employee, reviewerId, date, onSaved }) {
-  const [editing,  setEditing]  = useState(false)
-  const [checkIn,  setCheckIn]  = useState(isoToTime(record?.check_in))
-  const [checkOut, setCheckOut] = useState(isoToTime(record?.check_out))
-  const [wfh,      setWfh]      = useState(record?.is_wfh || false)
-  const [reason,   setReason]   = useState('')
-  const [saving,   setSaving]   = useState(false)
-  const [error,    setError]    = useState('')
+  async function startEditing() {
+    const existing = await getSessionsForDate(employee.id, date)
+    setSessions(existing.length
+      ? existing.map(s => ({ checkIn: isoToTime(s.check_in), checkOut: isoToTime(s.check_out), isWFH: s.is_wfh }))
+      : [{ checkIn: '', checkOut: '', isWFH: false }])
+    setLoaded(true)
+    setEditing(true)
+  }
+
+  function updateSession(i, field, value) {
+    setSessions(ss => ss.map((s, idx) => idx === i ? { ...s, [field]: value } : s))
+  }
+  function addSession() { setSessions(ss => [...ss, { checkIn: '', checkOut: '', isWFH: false }]) }
+  function removeSession(i) { setSessions(ss => ss.filter((_, idx) => idx !== i)) }
 
   async function save() {
     if (!reason.trim()) { setError('Reason is required for audit trail.'); return }
-    if (!checkIn)       { setError('Check-in time is required.'); return }
+    const valid = sessions.filter(s => s.checkIn && s.checkOut)
+    if (valid.length === 0) { setError('At least one session with check-in and check-out is required.'); return }
     setSaving(true); setError('')
-
     try {
-      let recordId = record?.id
-
-      // If no record exists yet, create one first
-      if (!recordId) {
-        const { data: newRecord, error: createErr } = await supabase
-          .from('attendance')
-          .insert({
-            employee_id: employee.id,
-            date,
-            is_wfh:      wfh,
-            status:      'present',
-            hr_override: true,
-          })
-          .select()
-          .single()
-        if (createErr) throw createErr
-        recordId = newRecord.id
-      }
-
-      // Override check-in
-      if (checkIn) {
-        await overrideCheckTime(
-          recordId, employee.id, date,
-          'check_in', timeToISO(date, checkIn),
-          reason, reviewerId
-        )
-      }
-
-      // Override check-out
-      if (checkOut) {
-        await overrideCheckTime(
-          recordId, employee.id, date,
-          'check_out', timeToISO(date, checkOut),
-          reason, reviewerId
-        )
-      }
-
-      // Update WFH flag
-      await supabase.from('attendance').update({ is_wfh: wfh }).eq('id', recordId)
-
+      await hrSetSessions(
+        employee.id, date,
+        valid.map(s => ({ checkIn: timeToISO(date, s.checkIn), checkOut: timeToISO(date, s.checkOut), isWFH: s.isWFH })),
+        reviewerId, reason
+      )
       setEditing(false)
       setReason('')
       onSaved()
@@ -95,74 +60,44 @@ function OverrideRow({ record, employee, reviewerId, date, onSaved }) {
   }
 
   return (
-    <div style={{ borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ borderBottom: `1px solid ${C.border}`, padding: '14px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: editing ? 12 : 0 }}>
         <Avatar initials={employee?.avatar_initials || '??'} size={34} />
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{employee?.full_name}</div>
           <div style={{ fontSize: 11, color: C.textLight }}>{employee?.role} · {employee?.department}</div>
         </div>
+        {!editing && (
+          <Button variant="outline" size="sm" onClick={startEditing}>✏️ Edit Sessions</Button>
+        )}
+      </div>
 
-        {!editing ? (
-          <>
-            <div style={{ display: 'flex', gap: 20, fontSize: 12, alignItems: 'center' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ color: C.textLight, fontSize: 10, marginBottom: 3 }}>CHECK IN</div>
-                <div style={{ fontWeight: 700, color: record?.check_in ? C.green : C.textLight }}>
-                  {record?.check_in ? isoToTime(record.check_in) : '—'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ color: C.textLight, fontSize: 10, marginBottom: 3 }}>CHECK OUT</div>
-                <div style={{ fontWeight: 700, color: record?.check_out ? C.accent : C.textLight }}>
-                  {record?.check_out ? isoToTime(record.check_out) : '—'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ color: C.textLight, fontSize: 10, marginBottom: 3 }}>HOURS</div>
-                <div style={{ fontWeight: 700, color: C.amber }}>
-                  {record?.hours_worked ? `${record.hours_worked}h` : '—'}
-                </div>
-              </div>
-              <StatusBadge status={record?.status} />
+      {editing && (
+        <div>
+          {sessions.map((s, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <input type="time" value={s.checkIn} onChange={e => updateSession(i, 'checkIn', e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: 6, border: `1.5px solid ${C.border}`, fontSize: 12 }} />
+              <input type="time" value={s.checkOut} onChange={e => updateSession(i, 'checkOut', e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: 6, border: `1.5px solid ${C.border}`, fontSize: 12 }} />
+              <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="checkbox" checked={s.isWFH} onChange={e => updateSession(i, 'isWFH', e.target.checked)} /> WFH
+              </label>
+              {sessions.length > 1 && (
+                <button onClick={() => removeSession(i)} style={{ background: 'none', border: 'none', color: C.accent, cursor: 'pointer' }}>✕</button>
+              )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              ✏️ Edit
-            </Button>
-          </>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-            <div>
-              <label style={{ fontSize: 10, color: C.textLight, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Check In *</label>
-              <input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)}
-                style={{ padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "'DM Sans',sans-serif", width: 120 }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 10, color: C.textLight, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Check Out</label>
-              <input type="time" value={checkOut} onChange={e => setCheckOut(e.target.value)}
-                style={{ padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "'DM Sans',sans-serif", width: 120 }} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <input type="checkbox" id={`wfh-${employee.id}`} checked={wfh} onChange={e => setWfh(e.target.checked)} />
-              <label htmlFor={`wfh-${employee.id}`} style={{ fontSize: 12, cursor: 'pointer', color: C.textMid }}>WFH</label>
-            </div>
-            <div>
-              <label style={{ fontSize: 10, color: C.textLight, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reason *</label>
-              <input
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                placeholder="e.g. Forgot to check out"
-                style={{ padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${C.border}`, fontSize: 12, width: 200, fontFamily: "'DM Sans',sans-serif" }}
-              />
-            </div>
+          ))}
+          <button onClick={addSession} style={{ background: 'none', border: 'none', color: C.brand, cursor: 'pointer', fontSize: 12, marginBottom: 10 }}>
+            + Add session
+          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (required)"
+              style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1.5px solid ${C.border}`, fontSize: 12 }} />
             <Button size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : '✓ Save'}</Button>
             <Button size="sm" variant="outline" onClick={() => { setEditing(false); setError('') }}>Cancel</Button>
           </div>
-        )}
-      </div>
-      {error && (
-        <div style={{ padding: '0 20px 12px' }}>
-          <Alert type="error" message={error} />
+          {error && <div style={{ marginTop: 8 }}><Alert type="error" message={error} /></div>}
         </div>
       )}
     </div>
@@ -171,7 +106,6 @@ function OverrideRow({ record, employee, reviewerId, date, onSaved }) {
 
 export default function AttendanceOverridePanel({ reviewerId }) {
   const [date,      setDate]      = useState(todayISO())
-  const [records,   setRecords]   = useState([])
   const [employees, setEmployees] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
@@ -179,11 +113,7 @@ export default function AttendanceOverridePanel({ reviewerId }) {
   async function load() {
     setLoading(true)
     try {
-      const [r, e] = await Promise.all([
-        getTeamAttendanceByDate(date),
-        getAllEmployees(),
-      ])
-      setRecords(r)
+      const e = await getAllEmployees()
       setEmployees(e)
     } finally { setLoading(false) }
   }
@@ -239,14 +169,7 @@ export default function AttendanceOverridePanel({ reviewerId }) {
         : activeEmployees.length === 0
           ? <EmptyState icon="👥" title="No employees found" />
           : activeEmployees.map(emp => (
-              <OverrideRow
-                key={emp.id}
-                record={records.find(r => r.employee_id === emp.id)}
-                employee={emp}
-                reviewerId={reviewerId}
-                date={date}
-                onSaved={load}
-              />
+              <OverrideRow key={emp.id} employee={emp} date={date} reviewerId={reviewerId} onSaved={load} />
             ))
       }
     </Card>
