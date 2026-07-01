@@ -238,7 +238,7 @@ export async function runDailyChecks(reviewerEmployeeId) {
 
   // ── Monthly regularization reminder (25th → month-end) ────────────────────
   if (shouldSendMonthlyRegularizationReminder(today)) {
-    const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const monthStart = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-01`
 
     const { data: unresolvedDays } = await supabase
       .from('attendance')

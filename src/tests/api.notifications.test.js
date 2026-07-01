@@ -203,16 +203,23 @@ describe('runDailyChecks — monthly regularization reminder', () => {
 })
 
 describe('runDailyChecks — weekly attendance report', () => {
-  function baseMock({ notificationCount = 0 } = {}) {
+  function baseMock({ notificationCount = 0, insertSpy = null } = {}) {
     supabase.from.mockImplementation((table) => {
       if (table === 'notifications') {
+        let capturedType = null
         const chain = {
           select: vi.fn(() => chain),
-          eq: vi.fn(() => chain),
+          eq: vi.fn((col, val) => {
+            if (col === 'type') capturedType = val
+            return chain
+          }),
           gte: vi.fn(() => Promise.resolve({ data: [], count: notificationCount, error: null })),
-          insert: vi.fn(() => ({
-            select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: {}, error: null })) })),
-          })),
+          insert: vi.fn((payload) => {
+            if (insertSpy) insertSpy(payload)
+            return {
+              select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: {}, error: null })) })),
+            }
+          }),
         }
         return chain
       }
@@ -264,26 +271,31 @@ describe('runDailyChecks — weekly attendance report', () => {
   it('does not fire on a non-Monday', async () => {
     // 2026-06-30 is a Tuesday
     vi.setSystemTime(new Date('2026-06-30T10:00:00.000Z'))
-    baseMock({ notificationCount: 0 })
+    const insertSpy = vi.fn()
+    baseMock({ notificationCount: 0, insertSpy })
 
     await runDailyChecks('hr-1')
 
-    // On a Tuesday outside the 25th-end-of-month window... wait June 30 IS in the reminder
-    // window, so isolate by checking notifications weren't created for the weekly-report type.
-    const insertCalls = supabase.from.mock.calls.filter(([table]) => table === 'notifications')
-    // We can't easily assert type without deeper spying, but we can assert runDailyChecks
-    // doesn't throw and completes — the Monday-only guard is verified structurally in source.
-    expect(insertCalls).toBeDefined()
+    const weeklyReportInserts = insertSpy.mock.calls
+      .map(([payload]) => payload)
+      .filter(payload => payload?.type === 'attendance_weekly_report_ready')
+    expect(weeklyReportInserts.length).toBe(0)
     vi.useRealTimers()
   })
 
   it('does not send a duplicate weekly report notification if already sent this week', async () => {
     vi.setSystemTime(new Date('2026-06-29T10:00:00.000Z'))
-    baseMock({ notificationCount: 1 })
+    const insertSpy = vi.fn()
+    // notificationCount: 1 simulates that a weekly-report notification was already
+    // created for this reviewer today (dedup check should short-circuit the insert).
+    baseMock({ notificationCount: 1, insertSpy })
 
     await runDailyChecks('hr-1')
-    // Should complete without error; dedup handled by count check in source.
-    expect(true).toBe(true)
+
+    const weeklyReportInserts = insertSpy.mock.calls
+      .map(([payload]) => payload)
+      .filter(payload => payload?.type === 'attendance_weekly_report_ready')
+    expect(weeklyReportInserts.length).toBe(0)
     vi.useRealTimers()
   })
 })
