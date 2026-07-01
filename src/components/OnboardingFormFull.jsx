@@ -21,7 +21,10 @@ const toEnum = s => s.toLowerCase().trim().replace(/[\s-]+/g, '_')
 
 const DOC_TYPES = [
   { key: 'profile_photo',       label: 'Profile Photo',                    desc: 'Passport-sized photo for company records', required: true,  accept: 'image/*',       maxMB: 5  },
-  { key: 'education_cert',      label: 'Education Certificate',            desc: 'Copies of your academic certificates/degrees', required: true, accept: '.pdf,image/*', maxMB: 10 },
+  { key: 'tenth_marksheet',     label: '10th Marksheet',                   desc: 'SSC / 10th grade marksheet', required: true, accept: '.pdf,image/*', maxMB: 10 },
+  { key: 'twelfth_marksheet',   label: '12th Marksheet',                   desc: 'HSC / 12th grade marksheet', required: true, accept: '.pdf,image/*', maxMB: 10 },
+  { key: 'graduation_certificate',     label: 'Graduation Certificate',         desc: 'Provide at least one of Graduation or Post-Graduation certificate', required: false, accept: '.pdf,image/*', maxMB: 10 },
+  { key: 'postgraduation_certificate', label: 'Post-Graduation Certificate',    desc: 'Provide at least one of Graduation or Post-Graduation certificate', required: false, accept: '.pdf,image/*', maxMB: 10 },
   { key: 'experience_cert',     label: 'Experience Certificate',           desc: 'Previous employment certificates (if applicable)', required: false, accept: '.pdf,image/*', maxMB: 10 },
   { key: 'resume',              label: 'Resume / CV',                      desc: 'Your updated resume', required: true, accept: '.pdf,image/*', maxMB: 10 },
   { key: 'bank_proof',          label: 'Bank Account Proof',               desc: 'Cancelled cheque / passbook / screenshot', required: true, accept: '.pdf,image/*', maxMB: 10 },
@@ -232,6 +235,9 @@ export default function OnboardingForm() {
       for (const doc of requiredDocs) {
         if (!files[doc.key]) return `Please upload: ${doc.label}`
       }
+      if (!files.graduation_certificate && !files.postgraduation_certificate) {
+        return 'Please upload at least one of: Graduation Certificate or Post-Graduation Certificate.'
+      }
     }
     return null
   }
@@ -304,7 +310,10 @@ export default function OnboardingForm() {
 
       // 5. Upload other documents
       const docUploadMap = {
-        education_cert:    'education_certificate',
+        tenth_marksheet:             'tenth_marksheet',
+        twelfth_marksheet:           'twelfth_marksheet',
+        graduation_certificate:      'graduation_certificate',
+        postgraduation_certificate:  'postgraduation_certificate',
         experience_cert:   'experience_certificate',
         resume:            'resume',
         bank_proof:        'bank_proof',
