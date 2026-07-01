@@ -142,6 +142,23 @@ export async function notifyWelcome(employeeId, fullName) {
   })
 }
 
+// Returns an array of UTC-based YYYY-MM-DD working-day (Mon-Fri) strings from
+// `startStr` through `endStr` inclusive, excluding any date present in `holidayDates`.
+function workingDaysInRange(startStr, endStr, holidayDates) {
+  const days = []
+  let cursor = new Date(`${startStr}T00:00:00.000Z`)
+  const end = new Date(`${endStr}T00:00:00.000Z`)
+  while (cursor <= end) {
+    const dow = cursor.getUTCDay() // 0=Sun ... 6=Sat
+    const dateStr = cursor.toISOString().split('T')[0]
+    if (dow !== 0 && dow !== 6 && !holidayDates.has(dateStr)) {
+      days.push(dateStr)
+    }
+    cursor = new Date(cursor.getTime() + 86400000)
+  }
+  return days
+}
+
 // ─── DAILY CHECKS (run on page load for HR/Admin) ─────────────────────────────
 // Checks birthdays and upcoming holidays and creates notifications if needed
 export async function runDailyChecks(reviewerEmployeeId) {
@@ -260,6 +277,49 @@ export async function runDailyChecks(reviewerEmployeeId) {
     for (const row of unresolvedDays || []) {
       if (requestedSet.has(`${row.employee_id}:${row.date}`)) continue
       byEmployee[row.employee_id] = (byEmployee[row.employee_id] || 0) + 1
+    }
+
+    // ── True absences: working days with NO attendance row at all ───────────
+    const { data: monthHolidays } = await supabase
+      .from('holidays')
+      .select('date, type')
+      .gte('date', monthStart)
+      .lte('date', todayStr)
+    const holidayDates = new Set((monthHolidays || []).map(h => h.date))
+
+    const { data: activeEmployees } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('status', 'active')
+
+    const { data: approvedLeaves } = await supabase
+      .from('leave_requests')
+      .select('employee_id, from_date, to_date')
+      .eq('status', 'approved')
+      .lte('from_date', todayStr)
+      .gte('to_date', monthStart)
+
+    const { data: attendanceRows } = await supabase
+      .from('attendance')
+      .select('employee_id, date')
+      .gte('date', monthStart)
+      .lte('date', todayStr)
+
+    const hasAttendanceRow = new Set(
+      (attendanceRows || []).map(r => `${r.employee_id}:${r.date}`)
+    )
+
+    const workingDays = workingDaysInRange(monthStart, todayStr, holidayDates)
+
+    for (const emp of activeEmployees || []) {
+      const employeeLeaves = (approvedLeaves || []).filter(l => l.employee_id === emp.id)
+      for (const day of workingDays) {
+        if (hasAttendanceRow.has(`${emp.id}:${day}`)) continue // already counted above, or a fully-worked day
+        if (requestedSet.has(`${emp.id}:${day}`)) continue
+        const onLeave = employeeLeaves.some(l => l.from_date <= day && day <= l.to_date)
+        if (onLeave) continue
+        byEmployee[emp.id] = (byEmployee[emp.id] || 0) + 1
+      }
     }
 
     for (const [employeeId, count] of Object.entries(byEmployee)) {

@@ -63,27 +63,45 @@ describe('runDailyChecks — monthly regularization reminder', () => {
     return chain
   }
 
-  function setupSupabaseMock({ employees = [], holidays = [], unresolvedDays = [], alreadyRequestedItems = [], notificationCount = 0 } = {}) {
+  function setupSupabaseMock({ employees = [], activeEmployees = [], holidays = [], leaveRequests = [], unresolvedDays = [], anyAttendanceRows, alreadyRequestedItems = [], notificationCount = 0 } = {}) {
     supabase.from.mockImplementation((table) => {
       if (table === 'employees') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
-        chain.eq = vi.fn(() => chain)
-        chain.not = vi.fn(() => Promise.resolve({ data: employees, error: null }))
+        // .eq('status','active') must serve both: birthday path continues with .not(),
+        // active-roster path awaits the .eq() result directly.
+        const eqResult = {
+          not: vi.fn(() => Promise.resolve({ data: employees, error: null })),
+          then: (resolve) => resolve({ data: activeEmployees, error: null }),
+        }
+        chain.eq = vi.fn(() => eqResult)
         return chain
       }
       if (table === 'holidays') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
-        chain.eq = vi.fn(() => Promise.resolve({ data: holidays, error: null }))
+        chain.gte = vi.fn(() => chain)
+        chain.lte = vi.fn(() => Promise.resolve({ data: holidays, error: null }))
+        chain.eq = vi.fn(() => Promise.resolve({ data: [], error: null })) // upcoming-holiday check
+        return chain
+      }
+      if (table === 'leave_requests') {
+        const chain = buildChain()
+        chain.select = vi.fn(() => chain)
+        chain.eq = vi.fn(() => chain)
+        chain.lte = vi.fn(() => chain)
+        chain.gte = vi.fn(() => Promise.resolve({ data: leaveRequests, error: null }))
         return chain
       }
       if (table === 'attendance') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
-        chain.in = vi.fn(() => chain)
+        chain.in = vi.fn(() => { chain.__usedIn = true; return chain })
         chain.gte = vi.fn(() => chain)
-        chain.lte = vi.fn(() => Promise.resolve({ data: unresolvedDays, error: null }))
+        chain.lte = vi.fn(() => Promise.resolve({
+          data: chain.__usedIn ? unresolvedDays : (anyAttendanceRows !== undefined ? anyAttendanceRows : unresolvedDays),
+          error: null,
+        }))
         return chain
       }
       if (table === 'attendance_regularization_items') {
@@ -134,20 +152,35 @@ describe('runDailyChecks — monthly regularization reminder', () => {
       if (table === 'employees') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
-        chain.eq = vi.fn(() => chain)
-        chain.not = vi.fn(() => Promise.resolve({ data: [], error: null }))
+        // No active employees for the true-absence roster scan — this test is
+        // isolating the already-requested-dedup logic on the half_day/absent path only.
+        const eqResult = {
+          not: vi.fn(() => Promise.resolve({ data: [], error: null })),
+          then: (resolve) => resolve({ data: [], error: null }),
+        }
+        chain.eq = vi.fn(() => eqResult)
         return chain
       }
       if (table === 'holidays') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
+        chain.gte = vi.fn(() => chain)
+        chain.lte = vi.fn(() => Promise.resolve({ data: [], error: null }))
         chain.eq = vi.fn(() => Promise.resolve({ data: [], error: null }))
+        return chain
+      }
+      if (table === 'leave_requests') {
+        const chain = buildChain()
+        chain.select = vi.fn(() => chain)
+        chain.eq = vi.fn(() => chain)
+        chain.lte = vi.fn(() => chain)
+        chain.gte = vi.fn(() => Promise.resolve({ data: [], error: null }))
         return chain
       }
       if (table === 'attendance') {
         const chain = buildChain()
         chain.select = vi.fn(() => chain)
-        chain.in = vi.fn(() => chain)
+        chain.in = vi.fn(() => { chain.__usedIn = true; return chain })
         chain.gte = vi.fn(() => chain)
         chain.lte = vi.fn(() => Promise.resolve({
           data: [{ employee_id: 'emp-1', date: '2026-06-05', status: 'absent' }],
@@ -202,56 +235,194 @@ describe('runDailyChecks — monthly regularization reminder', () => {
   })
 })
 
+// Shared chain builders for the true-absence + weekly-report test blocks below.
+// `employees` now serves two distinct query shapes:
+//   1. birthday query:      .select().eq('status','active').not('date_of_birth','is',null)
+//   2. active-roster query: .select().eq('status','active')                (terminal — awaited directly)
+// Both start with .select().eq(), so the object returned by `eq` must be awaitable
+// (thenable) AND still expose `.not()` for the birthday path.
+function employeesChain(activeRosterData, birthdayData) {
+  const eqResult = {
+    not: vi.fn(() => Promise.resolve({ data: birthdayData, error: null })),
+    then: (resolve) => resolve({ data: activeRosterData, error: null }),
+  }
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => eqResult),
+  }
+  return chain
+}
+
+function holidaysChain(monthHolidays, upcomingHolidays = []) {
+  const chain = {
+    select: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => Promise.resolve({ data: monthHolidays, error: null })),
+    eq: vi.fn(() => Promise.resolve({ data: upcomingHolidays, error: null })),
+  }
+  return chain
+}
+
+function leaveRequestsChain(approvedLeaves) {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    lte: vi.fn(() => chain),
+    gte: vi.fn(() => Promise.resolve({ data: approvedLeaves, error: null })),
+  }
+  return chain
+}
+
+// `attendance` also serves two shapes: the existing half_day/absent query (uses .in())
+// and the new any-row-exists query (no .in()). Track which path via a flag.
+function attendanceChain(halfAbsentRows, anyRowRows) {
+  const chain = {
+    select: vi.fn(() => chain),
+    in: vi.fn(() => { chain.__usedIn = true; return chain }),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => Promise.resolve({ data: chain.__usedIn ? halfAbsentRows : anyRowRows, error: null })),
+  }
+  return chain
+}
+
+function regItemsChain(alreadyRequestedItems) {
+  const chain = {
+    select: vi.fn(() => chain),
+    gte: vi.fn(() => Promise.resolve({ data: alreadyRequestedItems, error: null })),
+  }
+  return chain
+}
+
+function notificationsChain({ notificationCount = 0, onEq = null, onInsert = null } = {}) {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn((col, val) => { if (onEq) onEq(col, val); return chain }),
+    gte: vi.fn(() => Promise.resolve({ count: notificationCount, data: [], error: null })),
+    insert: vi.fn((payload) => {
+      if (onInsert) onInsert(payload)
+      return { select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: {}, error: null })) })) }
+    }),
+  }
+  return chain
+}
+
+describe('runDailyChecks — true absence detection (no attendance row at all)', () => {
+  it('notifies an employee with a true no-show day (no attendance row at all)', async () => {
+    // 2026-06-25 is a Thursday (working day), no holiday, no leave, no attendance row.
+    vi.setSystemTime(new Date('2026-06-25T10:00:00.000Z'))
+    let capturedNotifyId = null
+    supabase.from.mockImplementation((table) => {
+      if (table === 'notifications') return notificationsChain({
+        onEq: (col, val) => { if (col === 'employee_id') capturedNotifyId = val },
+      })
+      if (table === 'employees') return employeesChain([{ id: 'emp-1' }], [])
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], []) // no rows at all -> every working day is a no-show
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('hr-1')
+
+    expect(capturedNotifyId).toBe('emp-1')
+    vi.useRealTimers()
+  })
+
+  it('does NOT notify for a working day the employee was on approved leave', async () => {
+    vi.setSystemTime(new Date('2026-06-25T10:00:00.000Z'))
+    let reminderInserted = false
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain([{ id: 'emp-1' }], [])
+      if (table === 'holidays') return holidaysChain([])
+      // Employee on approved leave for the entire month so far
+      if (table === 'leave_requests') return leaveRequestsChain([{ employee_id: 'emp-1', from_date: '2026-06-01', to_date: '2026-06-30' }])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => { if (payload?.type === 'attendance_regularization_reminder') reminderInserted = true },
+      })
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('hr-1')
+
+    expect(reminderInserted).not.toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('does NOT notify for a company holiday in the range', async () => {
+    // Make the whole range a holiday so every working day is excluded.
+    vi.setSystemTime(new Date('2026-06-25T10:00:00.000Z'))
+    let reminderInserted = false
+    const allDatesInRange = ['2026-06-01','2026-06-02','2026-06-03','2026-06-04','2026-06-05','2026-06-08','2026-06-09','2026-06-10','2026-06-11','2026-06-12','2026-06-15','2026-06-16','2026-06-17','2026-06-18','2026-06-19','2026-06-22','2026-06-23','2026-06-24','2026-06-25']
+      .map(date => ({ date, type: 'company' }))
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain([{ id: 'emp-1' }], [])
+      if (table === 'holidays') return holidaysChain(allDatesInRange)
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => { if (payload?.type === 'attendance_regularization_reminder') reminderInserted = true },
+      })
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('hr-1')
+
+    expect(reminderInserted).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('does not double-count a day already covered by an attendance row (half_day) in the no-row check', async () => {
+    // Single working day in range: 2026-06-25 (Thursday). It has a half_day
+    // attendance row, so it's counted once by the existing query and must be
+    // skipped entirely by the new no-row scan (hasAttendanceRow check).
+    vi.setSystemTime(new Date('2026-06-25T10:00:00.000Z'))
+    let capturedMessage = null
+    // Treat every working day except 2026-06-25 as a holiday, so the only day
+    // left for the true-absence scan to consider is the one that already has
+    // a half_day attendance row (and must therefore be skipped as a no-show).
+    const otherWorkingDaysAsHolidays = ['2026-06-01','2026-06-02','2026-06-03','2026-06-04','2026-06-05','2026-06-08','2026-06-09','2026-06-10','2026-06-11','2026-06-12','2026-06-15','2026-06-16','2026-06-17','2026-06-18','2026-06-19','2026-06-22','2026-06-23','2026-06-24']
+      .map(date => ({ date, type: 'company' }))
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain([{ id: 'emp-1' }], [])
+      if (table === 'holidays') return holidaysChain(otherWorkingDaysAsHolidays)
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain(
+        [{ employee_id: 'emp-1', date: '2026-06-25', status: 'half_day' }], // existing half_day/absent query result
+        [{ employee_id: 'emp-1', date: '2026-06-25' }],                    // any-row query result (same day has a row)
+      )
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => { if (payload?.type === 'attendance_regularization_reminder') capturedMessage = payload.message },
+      })
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('hr-1')
+
+    // Count should be exactly 1 (the half_day row), not 2 (half_day + phantom no-show for the same day).
+    expect(capturedMessage).toContain('1 day(s)')
+    vi.useRealTimers()
+  })
+})
+
 describe('runDailyChecks — weekly attendance report', () => {
   function baseMock({ notificationCount = 0, insertSpy = null } = {}) {
     supabase.from.mockImplementation((table) => {
-      if (table === 'notifications') {
-        let capturedType = null
-        const chain = {
-          select: vi.fn(() => chain),
-          eq: vi.fn((col, val) => {
-            if (col === 'type') capturedType = val
-            return chain
-          }),
-          gte: vi.fn(() => Promise.resolve({ data: [], count: notificationCount, error: null })),
-          insert: vi.fn((payload) => {
-            if (insertSpy) insertSpy(payload)
-            return {
-              select: vi.fn(() => ({ single: vi.fn(() => Promise.resolve({ data: {}, error: null })) })),
-            }
-          }),
-        }
-        return chain
-      }
-      if (table === 'attendance') {
-        const chain = {
-          select: vi.fn(() => chain),
-          in: vi.fn(() => chain),
-          gte: vi.fn(() => chain),
-          lte: vi.fn(() => Promise.resolve({ data: [], error: null })),
-        }
-        return chain
-      }
-      if (table === 'attendance_regularization_items') {
-        const chain = {
-          select: vi.fn(() => chain),
-          gte: vi.fn(() => Promise.resolve({ data: [], error: null })),
-        }
-        return chain
-      }
-      if (table === 'employees') {
-        const chain = {
-          select: vi.fn(() => chain),
-          eq: vi.fn(() => chain),
-          not: vi.fn(() => Promise.resolve({ data: [], error: null })),
-        }
-        return chain
-      }
-      // holidays
-      const chain = {
-        select: vi.fn(() => chain),
-        eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
-      }
+      if (table === 'notifications') return notificationsChain({ notificationCount, onInsert: insertSpy })
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'employees') return employeesChain([], [])
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
       return chain
     })
   }
