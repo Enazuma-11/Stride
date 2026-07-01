@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_HOURS_BY_TYPE, MAX_SESSIONS_PER_DAY } from './constants'
+import { WORK_HOURS_BY_TYPE, MAX_SESSIONS_PER_DAY } from './constants'
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 

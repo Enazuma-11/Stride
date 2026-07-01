@@ -21,7 +21,6 @@ function isoToTime(isoStr) {
 function OverrideRow({ employee, date, reviewerId, onSaved }) {
   const [editing, setEditing] = useState(false)
   const [sessions, setSessions] = useState([])
-  const [loaded, setLoaded] = useState(false)
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -31,7 +30,6 @@ function OverrideRow({ employee, date, reviewerId, onSaved }) {
     setSessions(existing.length
       ? existing.map(s => ({ checkIn: isoToTime(s.check_in), checkOut: isoToTime(s.check_out), isWFH: s.is_wfh }))
       : [{ checkIn: '', checkOut: '', isWFH: false }])
-    setLoaded(true)
     setEditing(true)
   }
 
