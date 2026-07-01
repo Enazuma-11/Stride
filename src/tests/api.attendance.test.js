@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { supabase } from '../lib/supabase'
-import { formatTime, hoursWorked, todayISO, sessionHoursForDate, deriveDailyStatus, checkIn } from '../lib/api.attendance'
+import { formatTime, hoursWorked, todayISO, sessionHoursForDate, deriveDailyStatus, checkIn, getWeekStart } from '../lib/api.attendance'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -194,5 +194,20 @@ describe('checkIn session cap', () => {
       })
 
     await expect(checkIn('emp-1', false)).rejects.toThrow(/check-in limit/i)
+  })
+})
+
+// ── getWeekStart ───────────────────────────────────────────────────────────────
+describe('getWeekStart', () => {
+  it('returns the Monday of the week for a mid-week date', () => {
+    expect(getWeekStart('2026-06-17')).toBe('2026-06-15') // Wed -> Mon
+  })
+
+  it('returns the same date if it is already Monday', () => {
+    expect(getWeekStart('2026-06-15')).toBe('2026-06-15')
+  })
+
+  it('returns the prior Monday for a Sunday', () => {
+    expect(getWeekStart('2026-06-21')).toBe('2026-06-15')
   })
 })

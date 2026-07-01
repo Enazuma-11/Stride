@@ -360,3 +360,67 @@ export async function overrideAttendance(employeeId, date, status, note) {
   if (error) throw error
   return data
 }
+
+// ─── WEEKLY HOURS ─────────────────────────────────────────────────────────────
+
+// Monday of the week containing dateStr (ISO week, Mon-Sun), UTC-based.
+export function getWeekStart(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00.000Z`)
+  const day = d.getUTCDay() // 0=Sun, 1=Mon ... 6=Sat
+  const diff = day === 0 ? -6 : 1 - day
+  d.setUTCDate(d.getUTCDate() + diff)
+  return d.toISOString().split('T')[0]
+}
+
+export async function getWeeklyHours(employeeId, weekStartISO) {
+  const weekEnd = addDaysISO(weekStartISO, 7)
+  const { data: rows, error } = await supabase
+    .from('attendance')
+    .select('date, hours_worked')
+    .eq('employee_id', employeeId)
+    .gte('date', weekStartISO)
+    .lt('date', weekEnd)
+  if (error) throw error
+
+  const empType = await getEmployeeType(employeeId)
+  const policy  = WORK_HOURS_BY_TYPE[empType] || WORK_HOURS_BY_TYPE.permanent
+  const totalHours = Math.round((rows || []).reduce((sum, r) => sum + (r.hours_worked || 0), 0) * 10) / 10
+
+  return {
+    weekStart: weekStartISO,
+    totalHours,
+    targetHours: policy.fullDay * 5,
+    dailyBreakdown: rows || [],
+  }
+}
+
+export async function getTeamWeeklyAttendance(weekStartISO) {
+  const weekEnd = addDaysISO(weekStartISO, 7)
+  const { data: rows, error } = await supabase
+    .from('attendance')
+    .select(`employee_id, date, hours_worked, is_wfh, employee:employee_id(id, full_name, role, department, avatar_initials, employee_type)`)
+    .gte('date', weekStartISO)
+    .lt('date', weekEnd)
+  if (error) throw error
+
+  const byEmployee = {}
+  for (const row of rows || []) {
+    const id = row.employee_id
+    if (!byEmployee[id]) {
+      byEmployee[id] = {
+        employee: row.employee,
+        totalHours: 0,
+        sessionDays: 0,
+        wfhDays: 0,
+      }
+    }
+    byEmployee[id].totalHours += row.hours_worked || 0
+    if (row.hours_worked > 0) byEmployee[id].sessionDays += 1
+    if (row.is_wfh) byEmployee[id].wfhDays += 1
+  }
+
+  return Object.values(byEmployee).map(e => ({
+    ...e,
+    totalHours: Math.round(e.totalHours * 10) / 10,
+  }))
+}
