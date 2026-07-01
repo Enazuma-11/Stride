@@ -9,6 +9,7 @@ import {
   getMyMonthlyAttendance, getHolidays, getWeeklyHours, getWeekStart,
   formatTime, hoursWorked, todayISO,
 } from '../../lib/api.attendance'
+import RegularizationForm from '../../components/RegularizationForm'
 
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
 function StatusBadge({ status, size = 'md' }) {
@@ -335,6 +336,7 @@ export default function AttendancePage() {
   const [actionLoad,setActionLoad]= useState(false)
   const [error,     setError]     = useState('')
   const [tab,       setTab]       = useState('today')
+  const [showRegularizationForm, setShowRegularizationForm] = useState(false)
 
   const load = useCallback(async () => {
     if (!employee) return
@@ -431,6 +433,14 @@ export default function AttendancePage() {
               onCheckOut={handleCheckOut}
               loading={actionLoad}
             />
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button onClick={() => setShowRegularizationForm(true)} style={{
+                background: 'none', border: 'none', color: C.brand,
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 8,
+              }}>
+                Request Regularization
+              </button>
+            </div>
           </div>
 
           {/* Today's info sidebar */}
@@ -488,6 +498,14 @@ export default function AttendancePage() {
           )}
           {tab === 'history' && <AttendanceTable records={records} />}
         </>
+      )}
+
+      {showRegularizationForm && (
+        <RegularizationForm
+          employeeId={employee.id}
+          onSubmitted={() => { setShowRegularizationForm(false); load() }}
+          onClose={() => setShowRegularizationForm(false)}
+        />
       )}
     </AppShell>
   )
