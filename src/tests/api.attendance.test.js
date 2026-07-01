@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { formatTime, hoursWorked, todayISO, sessionHoursForDate, deriveDailyStatus } from '../lib/api.attendance'
+import { supabase } from '../lib/supabase'
+import { formatTime, hoursWorked, todayISO, sessionHoursForDate, deriveDailyStatus, checkIn } from '../lib/api.attendance'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 // ── formatTime ────────────────────────────────────────────────────────────────
 describe('formatTime', () => {
@@ -144,5 +149,50 @@ describe('deriveDailyStatus', () => {
   it('uses the intern/contractor threshold (5.5h)', () => {
     expect(deriveDailyStatus(5.5, false, false, 'intern')).toBe('present')
     expect(deriveDailyStatus(3, false, false, 'intern')).toBe('half_day')
+  })
+})
+
+// ── checkIn session cap ────────────────────────────────────────────────────────
+describe('checkIn session cap', () => {
+  it('throws when employee already has an open session', async () => {
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq:     vi.fn().mockReturnThis(),
+      is:     vi.fn().mockReturnThis(),
+      order:  vi.fn().mockReturnThis(),
+      limit:  vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'sess-1', check_out: null }, error: null }),
+    })
+
+    await expect(checkIn('emp-1', false)).rejects.toThrow(/already checked in/i)
+  })
+
+  it('throws when today\'s session count has reached the cap', async () => {
+    const fiveSessions = Array.from({ length: 5 }, (_, i) => ({
+      id: `sess-${i}`,
+      check_in: '2026-07-01T03:00:00.000Z',
+      check_out: '2026-07-01T04:00:00.000Z',
+    }))
+
+    supabase.from
+      .mockReturnValueOnce({
+        // getOpenSession -> no open session
+        select: vi.fn().mockReturnThis(),
+        eq:     vi.fn().mockReturnThis(),
+        is:     vi.fn().mockReturnThis(),
+        order:  vi.fn().mockReturnThis(),
+        limit:  vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+      .mockReturnValueOnce({
+        // getTodaySessions -> 5 sessions already
+        select: vi.fn().mockReturnThis(),
+        eq:     vi.fn().mockReturnThis(),
+        gte:    vi.fn().mockReturnThis(),
+        lt:     vi.fn().mockReturnThis(),
+        order:  vi.fn().mockResolvedValue({ data: fiveSessions, error: null }),
+      })
+
+    await expect(checkIn('emp-1', false)).rejects.toThrow(/check-in limit/i)
   })
 })

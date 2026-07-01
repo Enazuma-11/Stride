@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_START_HOUR, LATE_MARK_MINUTES, WORK_HOURS_BY_TYPE } from './constants'
+import { FULL_DAY_HOURS, HALF_DAY_HOURS, WORK_HOURS_BY_TYPE, MAX_SESSIONS_PER_DAY } from './constants'
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -135,74 +135,77 @@ export function todayISO() {
 
 // ─── CHECK IN ────────────────────────────────────────────────────────────────
 
-export async function checkIn(employeeId, isWFH = false) {
-  const today = todayISO()
-
-  // Prevent duplicate check-in
-  const { data: existing } = await supabase
-    .from('attendance')
-    .select('id, check_in')
-    .eq('employee_id', employeeId)
-    .eq('date', today)
-    .single()
-
-  if (existing?.check_in) throw new Error('You have already checked in today.')
-
-  const now = new Date().toISOString()
-  const empType = await getEmployeeType(employeeId)
-  const status = computeStatus(now, null, isWFH, empType)
-
+export async function getOpenSession(employeeId) {
   const { data, error } = await supabase
-    .from('attendance')
-    .upsert({
-      employee_id: employeeId,
-      date:        today,
-      check_in:    now,
-      is_wfh:      isWFH,
-      status,
-    }, { onConflict: 'employee_id,date' })
-    .select()
-    .single()
-
+    .from('attendance_sessions')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .is('check_out', null)
+    .order('check_in', { ascending: false })
+    .limit(1)
+    .maybeSingle()
   if (error) throw error
   return data
+}
+
+export async function getTodaySessions(employeeId) {
+  const today = todayISO()
+  const { data, error } = await supabase
+    .from('attendance_sessions')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .gte('check_in', `${today}T00:00:00.000Z`)
+    .lt('check_in', `${addDaysISO(today, 1)}T00:00:00.000Z`)
+    .order('check_in', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function checkIn(employeeId, isWFH = false) {
+  const open = await getOpenSession(employeeId)
+  if (open) throw new Error('You are already checked in. Please check out first.')
+
+  const todaySessions = await getTodaySessions(employeeId)
+  if (todaySessions.length >= MAX_SESSIONS_PER_DAY) {
+    throw new Error(`You've reached today's check-in limit (${MAX_SESSIONS_PER_DAY} sessions). If you need to log additional work time for today, submit a regularization request.`)
+  }
+
+  const now = new Date().toISOString()
+  const { data: session, error } = await supabase
+    .from('attendance_sessions')
+    .insert({ employee_id: employeeId, check_in: now, is_wfh: isWFH })
+    .select()
+    .single()
+  if (error) throw error
+
+  const attendance = await recomputeDayAggregate(employeeId, todayISO())
+  return { session, attendance }
 }
 
 // ─── CHECK OUT ───────────────────────────────────────────────────────────────
 
 export async function checkOut(employeeId) {
-  const today = todayISO()
-  const now   = new Date().toISOString()
+  const open = await getOpenSession(employeeId)
+  if (!open) throw new Error('No open check-in found. Please check in first.')
 
-  const { data: existing, error: fetchError } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('employee_id', employeeId)
-    .eq('date', today)
-    .single()
-
-  if (fetchError || !existing) throw new Error('No check-in found for today. Please check in first.')
-  if (existing.check_out)      throw new Error('You have already checked out today.')
-
-  const empType = await getEmployeeType(employeeId)
-  const status = computeStatus(existing.check_in, now, existing.is_wfh, empType)
-  const hours  = hoursWorked(existing.check_in, now)
-
-  const { data, error } = await supabase
-    .from('attendance')
-    .update({ check_out: now, status, hours_worked: hours })
-    .eq('id', existing.id)
+  const now = new Date().toISOString()
+  const { data: session, error } = await supabase
+    .from('attendance_sessions')
+    .update({ check_out: now })
+    .eq('id', open.id)
     .select()
     .single()
-
   if (error) throw error
 
-  // Auto-deduct 0.5 casual_sick leave for half day
-  if (status === 'half_day') {
-    await deductHalfDayLeave(employeeId, existing.date)
-  }
+  const checkInDate  = open.check_in.split('T')[0]
+  const checkOutDate = now.split('T')[0]
 
-  return data
+  await recomputeDayAggregate(employeeId, checkInDate)
+  const attendance = checkOutDate !== checkInDate
+    ? await recomputeDayAggregate(employeeId, checkOutDate)
+    : await recomputeDayAggregate(employeeId, checkInDate)
+
+  return { session, attendance }
 }
 
 // ─── DEDUCT HALF DAY LEAVE ────────────────────────────────────────────────────
