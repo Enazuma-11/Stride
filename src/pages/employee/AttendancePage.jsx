@@ -5,8 +5,8 @@ import { C, ATTENDANCE_STATUSES, WORK_HOURS_BY_TYPE } from '../../lib/constants'
 import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {
-  checkIn, checkOut, getTodayAttendance,
-  getMyMonthlyAttendance, getHolidays,
+  checkIn, checkOut, getTodayAttendance, getTodaySessions, getOpenSession,
+  getMyMonthlyAttendance, getHolidays, getWeeklyHours, getWeekStart,
   formatTime, hoursWorked, todayISO,
 } from '../../lib/api.attendance'
 
@@ -46,24 +46,43 @@ function LiveClock() {
   )
 }
 
-// ─── CHECK IN/OUT PANEL ───────────────────────────────────────────────────────
-function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
-  const r = useResponsive()
-  const [isWFH, setIsWFH] = useState(false)
+// ─── SESSIONS LIST ────────────────────────────────────────────────────────────
+function SessionsList({ sessions }) {
+  if (sessions.length === 0) return null
+  return (
+    <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
+      {sessions.map((s, i) => (
+        <div key={s.id} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 14px', borderRadius: 8, background: C.surfaceAlt, fontSize: 13,
+        }}>
+          <span style={{ color: C.textMid }}>
+            Session {i + 1}: {formatTime(s.check_in)} – {s.check_out ? formatTime(s.check_out) : 'ongoing'}
+            {s.is_wfh && <span style={{ marginLeft: 8, fontSize: 11, color: C.brand }}>🏠 WFH</span>}
+          </span>
+          {s.check_out && (
+            <span style={{ fontWeight: 700, color: C.amber }}>
+              {hoursWorked(s.check_in, s.check_out)}h
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
-  const hasCheckedIn  = !!today?.check_in
-  const hasCheckedOut = !!today?.check_out
-  const hours = today?.check_in && today?.check_out
-    ? hoursWorked(today.check_in, today.check_out)
-    : null
+// ─── CHECK IN/OUT PANEL ───────────────────────────────────────────────────────
+function CheckInPanel({ today, sessions, openSession, onCheckIn, onCheckOut, loading }) {
+  const [isWFH, setIsWFH] = useState(false)
+  const hasOpenSession = !!openSession
+  const atSessionCap = sessions.length >= 5 && !hasOpenSession
 
   return (
-    <Card style={{ padding: r.isMobile ? '24px 16px' : '32px', textAlign: 'center' }}>
+    <Card style={{ padding: '32px', textAlign: 'center' }}>
       <LiveClock />
 
       <div style={{ margin: '28px 0 20px', display: 'flex', justifyContent: 'center', gap: 12 }}>
-        {/* WFH toggle */}
-        {!hasCheckedIn && (
+        {!hasOpenSession && !atSessionCap && (
           <button onClick={() => setIsWFH(w => !w)} style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 16px', borderRadius: 8,
@@ -79,53 +98,26 @@ function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
         )}
       </div>
 
-      {/* Status display */}
-      {hasCheckedIn && (
-        <div style={{
-          background: C.surfaceAlt, borderRadius: 12, padding: '16px 20px',
-          marginBottom: 24, display: 'inline-flex', gap: 24, alignItems: 'center',
-        }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: C.textLight, marginBottom: 4 }}>CHECK IN</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.green, fontFamily: "'Sora',sans-serif" }}>
-              {formatTime(today.check_in)}
-            </div>
-          </div>
-          {today.is_wfh && (
-            <div style={{ fontSize: 12, color: C.brand, background: C.brandLight, padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
-              🏠 WFH
-            </div>
-          )}
-          {hasCheckedOut && (
-            <>
-              <div style={{ width: 1, height: 32, background: C.border }} />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: C.textLight, marginBottom: 4 }}>CHECK OUT</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: C.accent, fontFamily: "'Sora',sans-serif" }}>
-                  {formatTime(today.check_out)}
-                </div>
-              </div>
-              <div style={{ width: 1, height: 32, background: C.border }} />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: C.textLight, marginBottom: 4 }}>HOURS</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: C.amber, fontFamily: "'Sora',sans-serif" }}>
-                  {hours}h
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <SessionsList sessions={sessions} />
 
-      {/* Today's status badge */}
       {today?.status && (
         <div style={{ marginBottom: 20 }}>
           <StatusBadge status={today.status} />
+          {today.hours_worked > 0 && (
+            <span style={{ marginLeft: 10, fontSize: 13, color: C.textMid }}>
+              {today.hours_worked}h logged today
+            </span>
+          )}
         </div>
       )}
 
-      {/* Action button */}
-      {!hasCheckedIn && (
+      {atSessionCap && (
+        <div style={{ marginBottom: 16 }}>
+          <Alert type="warning" message="You've reached today's check-in limit (5 sessions). If you need to log more time, submit a regularization request below." />
+        </div>
+      )}
+
+      {!hasOpenSession && !atSessionCap && (
         <button onClick={() => onCheckIn(isWFH)} disabled={loading} style={{
           padding: '16px 48px', borderRadius: 12, border: 'none',
           background: loading ? C.border : C.green,
@@ -133,13 +125,12 @@ function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
           fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
           fontFamily: "'Sora',sans-serif",
           boxShadow: loading ? 'none' : `0 6px 20px ${C.green}50`,
-          transition: 'all 0.2s',
         }}>
-          {loading ? 'Checking in…' : '✓ Check In'}
+          {loading ? 'Checking in…' : sessions.length === 0 ? '✓ Check In' : '✓ Check In (new session)'}
         </button>
       )}
 
-      {hasCheckedIn && !hasCheckedOut && (
+      {hasOpenSession && (
         <button onClick={onCheckOut} disabled={loading} style={{
           padding: '16px 48px', borderRadius: 12, border: 'none',
           background: loading ? C.border : C.accent,
@@ -147,17 +138,27 @@ function CheckInPanel({ today, onCheckIn, onCheckOut, loading }) {
           fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
           fontFamily: "'Sora',sans-serif",
           boxShadow: loading ? 'none' : `0 6px 20px ${C.accent}50`,
-          transition: 'all 0.2s',
         }}>
           {loading ? 'Checking out…' : '✕ Check Out'}
         </button>
       )}
+    </Card>
+  )
+}
 
-      {hasCheckedOut && (
-        <div style={{ fontSize: 14, color: C.textMid, fontStyle: 'italic' }}>
-          You're done for the day. See you tomorrow! 👋
-        </div>
-      )}
+// ─── THIS WEEK CARD ───────────────────────────────────────────────────────────
+function ThisWeekCard({ weekly }) {
+  if (!weekly) return null
+  const pct = Math.min(100, Math.round((weekly.totalHours / weekly.targetHours) * 100))
+  return (
+    <Card style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>This Week</span>
+        <span style={{ fontSize: 13, color: C.textMid }}>{weekly.totalHours} / {weekly.targetHours} hrs</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 6, background: C.border, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: C.brand, borderRadius: 6, transition: 'width 0.3s' }} />
+      </div>
     </Card>
   )
 }
@@ -325,6 +326,9 @@ export default function AttendancePage() {
   const [year,      setYear]      = useState(now.getFullYear())
   const [month,     setMonth]     = useState(now.getMonth() + 1)
   const [today,     setToday]     = useState(null)
+  const [sessions,  setSessions]  = useState([])
+  const [openSession,setOpenSession]= useState(null)
+  const [weekly,    setWeekly]    = useState(null)
   const [records,   setRecords]   = useState([])
   const [holidays,  setHolidays]  = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -336,23 +340,39 @@ export default function AttendancePage() {
     if (!employee) return
     setLoading(true)
     try {
-      const [t, r, h] = await Promise.all([
+      const [t, sess, open, wk, r, h] = await Promise.all([
         getTodayAttendance(employee.id),
+        getTodaySessions(employee.id),
+        getOpenSession(employee.id),
+        getWeeklyHours(employee.id, getWeekStart(todayISO())),
         getMyMonthlyAttendance(employee.id, year, month),
         getHolidays(year),
       ])
-      setToday(t); setRecords(r); setHolidays(h)
+      setToday(t); setSessions(sess); setOpenSession(open); setWeekly(wk)
+      setRecords(r); setHolidays(h)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }, [employee, year, month])
 
   useEffect(() => { load() }, [load])
 
+  async function refreshToday() {
+    const [t, sess, open, wk] = await Promise.all([
+      getTodayAttendance(employee.id),
+      getTodaySessions(employee.id),
+      getOpenSession(employee.id),
+      getWeeklyHours(employee.id, getWeekStart(todayISO())),
+    ])
+    setToday(t); setSessions(sess); setOpenSession(open); setWeekly(wk)
+    return t
+  }
+
   async function handleCheckIn(isWFH) {
     setActionLoad(true); setError('')
     try {
-      const rec = await checkIn(employee.id, isWFH)
-      setToday(rec)
+      const { attendance } = await checkIn(employee.id, isWFH)
+      setToday(attendance)
+      await refreshToday()
     } catch (e) { setError(e.message) }
     finally { setActionLoad(false) }
   }
@@ -360,12 +380,13 @@ export default function AttendancePage() {
   async function handleCheckOut() {
     setActionLoad(true); setError('')
     try {
-      const rec = await checkOut(employee.id)
-      setToday(rec)
+      const { attendance } = await checkOut(employee.id)
+      setToday(attendance)
+      await refreshToday()
       setRecords(rs => {
         const idx = rs.findIndex(r => r.date === todayISO())
-        if (idx >= 0) { const copy = [...rs]; copy[idx] = rec; return copy }
-        return [rec, ...rs]
+        if (idx >= 0) { const copy = [...rs]; copy[idx] = attendance; return copy }
+        return attendance ? [attendance, ...rs] : rs
       })
     } catch (e) { setError(e.message) }
     finally { setActionLoad(false) }
@@ -400,7 +421,17 @@ export default function AttendancePage() {
 
       {tab === 'today' && (
         <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? '1fr' : '1fr 340px', gap: 20 }}>
-          <CheckInPanel today={today} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} loading={actionLoad} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <ThisWeekCard weekly={weekly} />
+            <CheckInPanel
+              today={today}
+              sessions={sessions}
+              openSession={openSession}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              loading={actionLoad}
+            />
+          </div>
 
           {/* Today's info sidebar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
