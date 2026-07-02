@@ -19,15 +19,26 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`21b6681` — Broadcast regularization notifications to all active HR/Admin, not just one
+`865d1c1` — Add design spec for holiday opt-in calendar
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
 
 ## IN PROGRESS
 
-### 🔵 Leave / Holiday Overhaul (not yet designed)
-Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-yearly (Jan/July) opt-in holiday calendar with 2-week submission windows. To be designed next.
+### 🔵 Holiday Opt-In Calendar (design approved, implementation plan next)
+Spec: `docs/superpowers/specs/2026-07-02-holiday-optin-design.md`
+- Per-employee opt-in for `type='optional'` holidays only — `public`/`company` stay mandatory for everyone, unchanged
+- Two fixed annual windows: Jan 1–14 (picks for the whole year), Jul 1–14 (revise Jul–Dec picks only; Jan–Jun locked)
+- No cap on selections; silence = opted out of everything that window
+- Shared visibility — any employee (not just HR) can see who opted into a given holiday
+- Window-open + not-yet-responded reminder notifications, reusing the existing `runDailyChecks` pattern
+- New tables: `holiday_optins`, `holiday_optin_submissions`
+- Explicitly designed to avoid the Attendance Overhaul's post-launch bug classes (RLS cross-employee access, notification broadcast completeness, date-boundary math) — see spec's Testing Plan section
+- **Next step:** writing-plans skill → implementation plan, not yet executed
+
+### 🔵 Leave Overhaul (not yet designed)
+Employee-chosen paid/unpaid leave, plus "notify team when a regular leave request is approved" (deferred out of the Holiday design above). To be designed after the Holiday Opt-In Calendar ships.
 
 ## RECENTLY COMPLETED
 
