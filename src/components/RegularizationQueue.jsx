@@ -21,8 +21,11 @@ function AdminApplyRow({ item, reviewerId, onDone }) {
 
   function timeToISO(timeStr) {
     const [h, m] = timeStr.split(':').map(Number)
-    const d = new Date(`${item.date}T00:00:00.000Z`)
-    d.setUTCHours(h, m, 0, 0)
+    // `<input type="time">` gives a local wall-clock HH:MM with no timezone
+    // info — anchor to local midnight so it round-trips symmetrically with
+    // isoToTime() above (which reads back via local getHours/getMinutes).
+    const d = new Date(`${item.date}T00:00:00`)
+    d.setHours(h, m, 0, 0)
     return d.toISOString()
   }
 

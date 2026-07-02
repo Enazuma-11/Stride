@@ -4,8 +4,11 @@ import { hrSetSessions } from './api.attendance'
 
 function timeToISO(dateStr, timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
-  const d = new Date(`${dateStr}T00:00:00.000Z`)
-  d.setUTCHours(h, m, 0, 0)
+  // `<input type="time">` gives a local wall-clock HH:MM with no timezone info.
+  // Anchor to local midnight (not UTC) so the browser's own timezone offset
+  // is applied once, correctly, when toISOString() converts to UTC for storage.
+  const d = new Date(`${dateStr}T00:00:00`)
+  d.setHours(h, m, 0, 0)
   return d.toISOString()
 }
 

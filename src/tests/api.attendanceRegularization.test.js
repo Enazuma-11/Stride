@@ -115,6 +115,52 @@ describe('submitRegularizationRequest', () => {
     }))
   })
 
+  it('stores the proposed times as the local wall-clock time entered, not shifted by the timezone offset', async () => {
+    // Regression test: timeToISO() previously anchored the input to UTC
+    // midnight instead of local midnight, so a "09:11" entry in IST (UTC+5:30)
+    // got stored as 09:11 UTC — which redisplays as 14:41 IST, a 5.5-hour
+    // corruption. This test verifies the round-trip is timezone-agnostic:
+    // whatever local hour/minute was entered comes back out unchanged when
+    // read via local Date getters (matching how formatTime()/isoToTime()
+    // display it), regardless of what timezone the test runner is in.
+    const mockRequest = { id: 'req-tz' }
+    const mockEmployee = { full_name: 'Jane Doe', manager_id: 'mgr-1' }
+    let capturedRows
+
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockRequest, error: null }),
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockImplementation(rows => {
+          capturedRows = rows
+          return Promise.resolve({ data: null, error: null })
+        }),
+      })
+
+    await submitRegularizationRequest('emp-1', [
+      { date: '2026-06-17', proposedCheckIn: '09:11', proposedCheckOut: '18:47', reason: 'Test' },
+    ])
+
+    const storedCheckIn = new Date(capturedRows[0].proposed_check_in)
+    const storedCheckOut = new Date(capturedRows[0].proposed_check_out)
+    expect(storedCheckIn.getHours()).toBe(9)
+    expect(storedCheckIn.getMinutes()).toBe(11)
+    expect(storedCheckOut.getHours()).toBe(18)
+    expect(storedCheckOut.getMinutes()).toBe(47)
+  })
+
   it('falls back to notifying HR/Admin when employee has no manager_id, excluding self, and skips items straight to manager-approved', async () => {
     const mockRequest = { id: 'req-2' }
     const mockEmployee = { full_name: 'HR Person', manager_id: null }
