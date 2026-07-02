@@ -12,6 +12,9 @@ import {
 import RegularizationForm from '../../components/RegularizationForm'
 import RegularizationQueue from '../../components/RegularizationQueue'
 import { getAllEmployees } from '../../lib/api'
+import {
+  getMyRegularizationRequests, withdrawRegularizationRequest,
+} from '../../lib/api.attendanceRegularization'
 
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
 function StatusBadge({ status, size = 'md' }) {
@@ -54,23 +57,116 @@ function SessionsList({ sessions }) {
   if (sessions.length === 0) return null
   return (
     <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
-      {sessions.map((s, i) => (
-        <div key={s.id} style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '10px 14px', borderRadius: 8, background: C.surfaceAlt, fontSize: 13,
-        }}>
-          <span style={{ color: C.textMid }}>
-            Session {i + 1}: {formatTime(s.check_in)} – {s.check_out ? formatTime(s.check_out) : 'ongoing'}
-            {s.is_wfh && <span style={{ marginLeft: 8, fontSize: 11, color: C.brand }}>🏠 WFH</span>}
-          </span>
-          {s.check_out && (
-            <span style={{ fontWeight: 700, color: C.amber }}>
-              {hoursWorked(s.check_in, s.check_out)}h
+      {sessions.map((s, i) => {
+        const spansMidnight = s.check_out && s.check_in.split('T')[0] !== s.check_out.split('T')[0]
+        return (
+          <div key={s.id} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 14px', borderRadius: 8, background: C.surfaceAlt, fontSize: 13,
+          }}>
+            <span style={{ color: C.textMid }}>
+              Session {i + 1}: {formatTime(s.check_in)} – {s.check_out ? formatTime(s.check_out) : 'ongoing'}
+              {s.is_wfh && <span style={{ marginLeft: 8, fontSize: 11, color: C.brand }}>🏠 WFH</span>}
+              {spansMidnight && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: C.textLight, fontStyle: 'italic' }}>
+                  (spans midnight)
+                </span>
+              )}
             </span>
-          )}
-        </div>
-      ))}
+            {s.check_out && (
+              <span style={{ fontWeight: 700, color: C.amber }}>
+                {hoursWorked(s.check_in, s.check_out)}h
+              </span>
+            )}
+          </div>
+        )
+      })}
     </div>
+  )
+}
+
+// ─── REGULARIZATION ITEM STATUS ───────────────────────────────────────────────
+// Derives a human-readable status purely from the item's own manager_decision/
+// admin_decision fields — per the design spec, the request-level `status` column
+// is only a convenience rollup for list views; per-item decisions are authoritative.
+function regularizationItemStatus(item) {
+  if (item.manager_decision === 'pending') return { label: 'Pending Manager Review', color: C.amber, bg: C.amberSoft }
+  if (item.manager_decision === 'rejected') return { label: 'Rejected', color: C.accent, bg: C.accentSoft }
+  // manager_decision === 'approved' from here on
+  if (!item.admin_decision) return { label: 'Pending Admin Review', color: C.amber, bg: C.amberSoft }
+  if (item.admin_decision === 'approved') return { label: 'Approved', color: C.green, bg: C.greenSoft }
+  return { label: 'Rejected', color: C.accent, bg: C.accentSoft }
+}
+
+// A request is still fully withdrawable only while every one of its items has
+// not yet been touched by a manager (manager_decision still 'pending' for all).
+function isRequestWithdrawable(request) {
+  return (request.items || []).every(item => item.manager_decision === 'pending')
+}
+
+// ─── MY REGULARIZATION REQUESTS ───────────────────────────────────────────────
+function MyRegularizationRequests({ requests, onWithdraw, withdrawingId }) {
+  if (!requests.length) return null
+  return (
+    <Card padding="0">
+      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "'Sora',sans-serif" }}>
+        My Regularization Requests
+      </div>
+      <div>
+        {requests.map(request => {
+          const withdrawable = isRequestWithdrawable(request)
+          return (
+            <div key={request.id} style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: C.textLight }}>
+                  Submitted {new Date(request.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+                {withdrawable && (
+                  <button
+                    onClick={() => onWithdraw(request.id)}
+                    disabled={withdrawingId === request.id}
+                    style={{
+                      background: 'none', border: 'none', color: C.accent,
+                      fontSize: 12, fontWeight: 600, cursor: withdrawingId === request.id ? 'not-allowed' : 'pointer',
+                      padding: 0,
+                    }}>
+                    {withdrawingId === request.id ? 'Withdrawing…' : 'Withdraw'}
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(request.items || []).map(item => {
+                  const s = regularizationItemStatus(item)
+                  return (
+                    <div key={item.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '8px 10px', borderRadius: 8, background: C.surfaceAlt, fontSize: 12,
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: C.text }}>
+                          {new Date(item.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </div>
+                        <div style={{ color: C.textMid, marginTop: 2 }}>
+                          {formatTime(item.proposed_check_in)} – {formatTime(item.proposed_check_out)}
+                        </div>
+                        <div style={{ color: C.textLight, marginTop: 2 }}>{item.reason}</div>
+                      </div>
+                      <span style={{
+                        background: s.bg, color: s.color,
+                        fontSize: 10, fontWeight: 600, padding: '3px 9px',
+                        borderRadius: 20, whiteSpace: 'nowrap',
+                      }}>
+                        {s.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
   )
 }
 
@@ -340,12 +436,14 @@ export default function AttendancePage() {
   const [tab,       setTab]       = useState('today')
   const [showRegularizationForm, setShowRegularizationForm] = useState(false)
   const [employees, setEmployees] = useState([])
+  const [myRequests, setMyRequests] = useState([])
+  const [withdrawingId, setWithdrawingId] = useState(null)
 
   const load = useCallback(async () => {
     if (!employee) return
     setLoading(true)
     try {
-      const [t, sess, open, wk, r, h, emps] = await Promise.all([
+      const [t, sess, open, wk, r, h, emps, myReqs] = await Promise.all([
         getTodayAttendance(employee.id),
         getTodaySessions(employee.id),
         getOpenSession(employee.id),
@@ -353,12 +451,23 @@ export default function AttendancePage() {
         getMyMonthlyAttendance(employee.id, year, month),
         getHolidays(year),
         getAllEmployees(),
+        getMyRegularizationRequests(employee.id),
       ])
       setToday(t); setSessions(sess); setOpenSession(open); setWeekly(wk)
-      setRecords(r); setHolidays(h); setEmployees(emps)
+      setRecords(r); setHolidays(h); setEmployees(emps); setMyRequests(myReqs)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }, [employee, year, month])
+
+  async function handleWithdraw(requestId) {
+    setWithdrawingId(requestId); setError('')
+    try {
+      await withdrawRegularizationRequest(requestId, employee.id)
+      const myReqs = await getMyRegularizationRequests(employee.id)
+      setMyRequests(myReqs)
+    } catch (e) { setError(e.message) }
+    finally { setWithdrawingId(null) }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -446,18 +555,17 @@ export default function AttendancePage() {
                 Request Regularization
               </button>
             </div>
+
+            <MyRegularizationRequests requests={myRequests} onWithdraw={handleWithdraw} withdrawingId={withdrawingId} />
           </div>
 
           {/* Today's info sidebar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Card style={{ padding: '20px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textLight, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 14 }}>
-                Office Hours
+                Hours Thresholds
               </div>
               {[
-                { label: 'Work Start',   val: '9:00 AM' },
-                { label: 'Grace Period', val: 'Until 9:30 AM' },
-                { label: 'Work End',     val: employee?.employee_type === 'intern' ? '2:30 PM' : '6:00 PM' },
                 { label: 'Full Day',     val: `${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].fullDay}+ hours` },
                 { label: 'Half Day',     val: `${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].halfDay}–${WORK_HOURS_BY_TYPE[employee?.employee_type || 'permanent'].fullDay} hours` },
               ].map(r => (
