@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`5f4f004` — Wire up My Regularization Requests list, add midnight-span indicator, drop stale office-hours copy
+`1b341e2` — Fix orphaned no-manager regularization requests; block requests on approved leave days
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -41,8 +41,10 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 - Employee regularization requests (proposed times + reason, multi-date) → manager approve/reject per date → Admin/HR applies correction; employees can view status and withdraw pending requests
 - HR/Admin direct session-level override (`AttendanceOverridePanel.jsx` reworked to edit the full session list per day)
 - Monthly regularization reminder (25th → month-end), including true no-show absence detection (not just half-days) — excludes weekends, company holidays, approved leave, already-requested dates
-- New tables: `attendance_sessions`, `attendance_regularization_requests`, `attendance_regularization_items` (migrations: `supabase_migration_attendance_sessions.sql`, `supabase_migration_attendance_regularization.sql` — ⚠️ **must be run manually in both Supabase projects**, not yet applied as of this writing)
-- 181 tests passing (up from 105 at start of session)
+- New tables: `attendance_sessions`, `attendance_regularization_requests`, `attendance_regularization_items` (migrations: `supabase_migration_attendance_sessions.sql`, `supabase_migration_attendance_regularization.sql` — ✅ run in Test/Dev 2026-07-02, confirm Production status below)
+- 183 tests passing (up from 105 at start of the overhaul)
+
+**Post-launch fix (2026-07-02, commit `1b341e2`):** a no-manager employee's regularization request was silently orphaned — notified to HR/Admin correctly, but the item stayed `manager_decision='pending'` (never auto-approved past the manager stage), so it was invisible to both `getAdminPendingItems` (requires `manager_decision='approved'`) and `getManagerPendingItems` (requires the employee to have that reviewer as `manager_id`). Fixed: manager-less requests now insert with `manager_decision='approved'` and request `status='pending_admin'` directly. Also added a guard blocking regularization submissions for any date within an approved leave request.
 
 ---
 
