@@ -855,10 +855,15 @@ it('does not count an optional holiday as absence for an employee who opted in, 
   const optedInCall = notifySpy.mock.calls.find(([arg]) => arg.employeeId === 'emp-opted-in')
   const optedOutCall = notifySpy.mock.calls.find(([arg]) => arg.employeeId === 'emp-opted-out')
 
-  // emp-opted-in should NOT be nudged about 2026-03-10 (they opted in — it's their day off)
-  if (optedInCall) expect(optedInCall[0].message).not.toContain('1 day')
+  // emp-opted-in has no other unresolved days in this fixture, so opting into
+  // the one candidate day (2026-03-10) must mean zero unresolved days -> no
+  // notification at all. A conditional assertion here would silently pass
+  // even if the exclusion logic were broken, so assert the call's absence
+  // directly rather than only checking its contents when present.
+  expect(optedInCall).toBeUndefined()
   // emp-opted-out SHOULD be nudged — it's a normal working day for them
   expect(optedOutCall).toBeTruthy()
+  expect(optedOutCall[0].message).toContain('1 day')
 
   vi.useRealTimers()
 })
