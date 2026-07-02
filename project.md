@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`ca008ff` — Make regularization notifications best-effort; fix stale service-worker caching
+`34fa2ee` — Fix cross-employee notifications blocked by RETURNING-clause RLS visibility check (no SQL migration needed — client-side fix only)
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
