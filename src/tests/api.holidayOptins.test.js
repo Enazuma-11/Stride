@@ -1,5 +1,17 @@
-import { describe, it, expect } from 'vitest'
-import { getOptinWindow } from '../lib/api.holidayOptins'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { supabase } from '../lib/supabase'
+import {
+  getOptinWindow,
+  getOptionalHolidaysForYear,
+  getMyHolidayOptins,
+  saveMyHolidayOptins,
+  getHolidayOptinRoster,
+  hasSubmittedForWindow,
+} from '../lib/api.holidayOptins'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 describe('getOptinWindow', () => {
   it('is closed on Dec 31, with next window Jan 1 of the following year', () => {
@@ -61,5 +73,169 @@ describe('getOptinWindow', () => {
     // 2026-01-14T23:30:00.000Z is still Jan 14 in UTC — must be open
     const result = getOptinWindow(new Date('2026-01-14T23:30:00.000Z'))
     expect(result.isOpen).toBe(true)
+  })
+})
+
+describe('getOptionalHolidaysForYear', () => {
+  it('fetches only type=optional holidays for the given year, ordered by date', async () => {
+    const holidays = [{ id: 'h1', name: 'Festival A', date: '2026-03-15', type: 'optional', year: 2026 }]
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: holidays, error: null }),
+    })
+
+    const result = await getOptionalHolidaysForYear(2026)
+    expect(supabase.from).toHaveBeenCalledWith('holidays')
+    expect(result).toEqual(holidays)
+  })
+
+  it('throws on Supabase error', async () => {
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+    })
+    await expect(getOptionalHolidaysForYear(2026)).rejects.toThrow('DB error')
+  })
+})
+
+describe('getMyHolidayOptins', () => {
+  it('returns the array of holiday_ids the employee opted into for that year', async () => {
+    const rows = [
+      { holiday_id: 'h1', holiday: { year: 2026 } },
+      { holiday_id: 'h2', holiday: { year: 2026 } },
+    ]
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+    })
+    supabase.from().eq.mockResolvedValue({ data: rows, error: null })
+
+    const result = await getMyHolidayOptins('emp-1', 2026)
+    expect(result).toEqual(['h1', 'h2'])
+  })
+})
+
+describe('saveMyHolidayOptins', () => {
+  it('deletes opt-ins for editable holidays not selected, inserts newly selected ones, and records the submission', async () => {
+    const editableHolidayIds = ['h1', 'h2', 'h3']
+    const selectedHolidayIds = ['h1', 'h3']
+    let deletedIds, insertedRows, submissionRow
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'holiday_optins') {
+        return {
+          delete: vi.fn().mockReturnThis(),
+          in: vi.fn().mockImplementation((col, ids) => {
+            deletedIds = ids
+            return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+          }),
+          insert: vi.fn().mockImplementation(rows => {
+            insertedRows = rows
+            return Promise.resolve({ data: null, error: null })
+          }),
+        }
+      }
+      if (table === 'holiday_optin_submissions') {
+        return {
+          upsert: vi.fn().mockImplementation(row => {
+            submissionRow = row
+            return Promise.resolve({ data: null, error: null })
+          }),
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await saveMyHolidayOptins('emp-1', editableHolidayIds, selectedHolidayIds)
+
+    // h2 was editable but not selected -> deleted; h1, h3 were selected -> not deleted
+    expect(deletedIds).toEqual(['h2'])
+    expect(insertedRows).toEqual([
+      { employee_id: 'emp-1', holiday_id: 'h1' },
+      { employee_id: 'emp-1', holiday_id: 'h3' },
+    ])
+    expect(submissionRow.employee_id).toBe('emp-1')
+    expect(submissionRow.window_label).toMatch(/^\d{4}-H[12]$/)
+  })
+
+  it('still records a submission row when nothing is selected (confirming zero is a valid response)', async () => {
+    let submissionWritten = false
+    supabase.from.mockImplementation(table => {
+      if (table === 'holiday_optins') {
+        return {
+          delete: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }
+      }
+      if (table === 'holiday_optin_submissions') {
+        return {
+          upsert: vi.fn().mockImplementation(() => { submissionWritten = true; return Promise.resolve({ data: null, error: null }) }),
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await saveMyHolidayOptins('emp-1', ['h1'], [])
+    expect(submissionWritten).toBe(true)
+  })
+
+  it('does not call insert when every editable holiday was deselected', async () => {
+    let insertCalled = false
+    supabase.from.mockImplementation(table => {
+      if (table === 'holiday_optins') {
+        return {
+          delete: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+          insert: vi.fn().mockImplementation(() => { insertCalled = true; return Promise.resolve({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'holiday_optin_submissions') {
+        return { upsert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await saveMyHolidayOptins('emp-1', ['h1'], [])
+    expect(insertCalled).toBe(false)
+  })
+})
+
+describe('getHolidayOptinRoster', () => {
+  it('returns the employees who opted into a given holiday', async () => {
+    const rows = [
+      { employee_id: 'e1', employee: { full_name: 'Jane Doe', avatar_initials: 'JD' } },
+    ]
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockResolvedValue({ data: rows, error: null }),
+    })
+
+    const result = await getHolidayOptinRoster('h1')
+    expect(result).toEqual([{ employee_id: 'e1', full_name: 'Jane Doe', avatar_initials: 'JD' }])
+  })
+})
+
+describe('hasSubmittedForWindow', () => {
+  it('returns true when a submission row exists for the window', async () => {
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'sub-1' }, error: null }),
+    })
+    const result = await hasSubmittedForWindow('emp-1', '2026-H1')
+    expect(result).toBe(true)
+  })
+
+  it('returns false when no submission row exists', async () => {
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const result = await hasSubmittedForWindow('emp-1', '2026-H1')
+    expect(result).toBe(false)
   })
 })
