@@ -50,7 +50,16 @@ export async function markAllAsRead(employeeId) {
 
 // ─── CREATE NOTIFICATION (used server-side / by HR actions) ──────────────────
 export async function createNotification({ employeeId, type, title, message, metadata = {} }) {
-  const { data, error } = await supabase
+  // No .select() — the caller here is often a regular employee notifying
+  // someone else (e.g. HR/Admin). The INSERT's own RLS policy allows that,
+  // but .select() would additionally require SELECT-visibility on the row
+  // just written, which the notifications_own policy only grants for your
+  // own notifications. Under RLS, INSERT ... RETURNING fails outright if
+  // the inserted row isn't visible per the SELECT policy — even though the
+  // insert itself was allowed — so requesting the row back here would
+  // block the exact case this function exists for. No caller uses the
+  // returned row (all are fire-and-forget), so this is a pure fix.
+  const { error } = await supabase
     .from('notifications')
     .insert({
       employee_id: employeeId,
@@ -60,10 +69,7 @@ export async function createNotification({ employeeId, type, title, message, met
       metadata,
       is_read: false,
     })
-    .select()
-    .single()
   if (error) throw error
-  return data
 }
 
 // ─── CREATE NOTIFICATION FOR ALL ACTIVE EMPLOYEES ────────────────────────────
