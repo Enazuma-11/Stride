@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`34fa2ee` — Fix cross-employee notifications blocked by RETURNING-clause RLS visibility check (no SQL migration needed — client-side fix only)
+`21b6681` — Broadcast regularization notifications to all active HR/Admin, not just one
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
