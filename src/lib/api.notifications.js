@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getOptinWindow } from './api.holidayOptins'
 
 // Fires from the 25th through the last day of the month (inclusive).
 export function shouldSendMonthlyRegularizationReminder(now = new Date()) {
@@ -388,6 +389,70 @@ export async function runDailyChecks(reviewerEmployeeId) {
         message: 'The attendance Weekly view has been updated for last week.',
         metadata: {},
       })
+    }
+  }
+
+  // ── Holiday opt-in window notifications ────────────────────────────────────
+  const optinWindow = getOptinWindow(today)
+  if (optinWindow.isOpen) {
+    const { data: activeEmployeesForOptin } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('status', 'active')
+
+    // Window just opened today — notify everyone once.
+    const windowOpensToday =
+      optinWindow.closesOn.endsWith('-01-14') ? todayStr === `${optinWindow.label.split('-')[0]}-01-01`
+      : todayStr === `${optinWindow.label.split('-')[0]}-07-01`
+
+    if (windowOpensToday && (activeEmployeesForOptin || []).length > 0) {
+      await supabase.from('notifications').insert(
+        (activeEmployeesForOptin || []).map(emp => ({
+          employee_id: emp.id,
+          type: 'holiday_optin_window_open',
+          title: 'Holiday Opt-In Window Open',
+          message: `You can now pick your optional holidays. Submit by ${optinWindow.closesOn}.`,
+          metadata: { window: optinWindow.label },
+          is_read: false,
+        }))
+      )
+    }
+
+    // Closing-soon reminder: last 4 days of the window, only to employees
+    // who have not yet confirmed their picks (even confirming zero counts
+    // as responded — don't nag people who already answered).
+    const closesOnDate = new Date(`${optinWindow.closesOn}T00:00:00.000Z`)
+    const daysUntilClose = Math.round((closesOnDate - today) / 86400000)
+    if (daysUntilClose >= 0 && daysUntilClose <= 3) {
+      const { data: submitted } = await supabase
+        .from('holiday_optin_submissions')
+        .select('employee_id')
+        .eq('window_label', optinWindow.label)
+      const submittedIds = new Set((submitted || []).map(s => s.employee_id))
+      const notYetResponded = (activeEmployeesForOptin || []).filter(emp => !submittedIds.has(emp.id))
+
+      const remindersToSend = []
+      for (const emp of notYetResponded) {
+        const { count: alreadyRemindedToday } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('employee_id', emp.id)
+          .eq('type', 'holiday_optin_reminder')
+          .gte('created_at', todayStr)
+        if (alreadyRemindedToday === 0) {
+          remindersToSend.push({
+            employee_id: emp.id,
+            type: 'holiday_optin_reminder',
+            title: 'Holiday Picks Closing Soon',
+            message: `The holiday opt-in window closes ${optinWindow.closesOn} — submit your picks before then.`,
+            metadata: { window: optinWindow.label },
+            is_read: false,
+          })
+        }
+      }
+      if (remindersToSend.length > 0) {
+        await supabase.from('notifications').insert(remindersToSend)
+      }
     }
   }
 }

@@ -535,3 +535,107 @@ describe('runDailyChecks — weekly attendance report', () => {
     vi.useRealTimers()
   })
 })
+
+// ── holiday opt-in window notifications ─────────────────────────────────────
+// NOTE: the plan brief's snippet for this block invented a bespoke inline
+// `insert: vi.fn().mockImplementation(rows => { insertedRows = rows; ... })`
+// mock rather than reusing the file's established `notificationsChain({ onInsert })`
+// helper (used by every other describe block below the true-absence section).
+// `notificationsChain`'s `insert` mock is payload-shape-agnostic — it just
+// forwards whatever is passed to `.insert(...)` to `onInsert`, whether that's
+// a single object (the `createNotification` path) or an array (the bulk
+// `supabase.from('notifications').insert(rows)` path these new blocks use) —
+// so it works unmodified here. Adapted the brief's tests to use it for
+// consistency with the rest of the file instead of transcribing the ad-hoc
+// mock verbatim.
+describe('runDailyChecks — holiday opt-in window notifications', () => {
+  it('notifies every active employee when the window opens', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    const employees = [{ id: 'emp-1' }, { id: 'emp-2' }]
+    let insertedRows = null
+
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain(employees, [])
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => { insertedRows = payload },
+      })
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'holiday_optin_submissions') {
+        const chain = { select: vi.fn(() => chain), eq: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+        return chain
+      }
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), in: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('reviewer-1')
+
+    expect(insertedRows).toBeTruthy()
+    expect(Array.isArray(insertedRows)).toBe(true)
+    expect(insertedRows.map(r => r.employee_id).sort()).toEqual(['emp-1', 'emp-2'])
+    expect(insertedRows[0].type).toBe('holiday_optin_window_open')
+
+    vi.useRealTimers()
+  })
+
+  it('does not fire the window-open notification on a day outside any window', async () => {
+    vi.setSystemTime(new Date('2026-02-15T00:00:00.000Z'))
+
+    let notificationsInsertCalled = false
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain([{ id: 'emp-1' }], [])
+      if (table === 'notifications') return notificationsChain({
+        onInsert: () => { notificationsInsertCalled = true },
+      })
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), in: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('reviewer-1')
+    expect(notificationsInsertCalled).toBe(false)
+
+    vi.useRealTimers()
+  })
+
+  it('sends the closing-soon reminder only to employees without a submission row for the current window', async () => {
+    vi.setSystemTime(new Date('2026-01-12T00:00:00.000Z')) // within the last 4 days of H1 (closes Jan 14)
+
+    const employees = [{ id: 'emp-responded' }, { id: 'emp-not-responded' }]
+    let insertedRows = null
+
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain(employees, [])
+      if (table === 'holiday_optin_submissions') {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => Promise.resolve({ data: [{ employee_id: 'emp-responded' }], error: null })),
+        }
+        return chain
+      }
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => { insertedRows = payload },
+      })
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), in: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('reviewer-1')
+
+    const reminderRows = (Array.isArray(insertedRows) ? insertedRows : []).filter(r => r.type === 'holiday_optin_reminder')
+    expect(reminderRows.map(r => r.employee_id)).toEqual(['emp-not-responded'])
+
+    vi.useRealTimers()
+  })
+})
