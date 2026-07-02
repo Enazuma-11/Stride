@@ -288,10 +288,31 @@ export async function runDailyChecks(reviewerEmployeeId) {
     // ── True absences: working days with NO attendance row at all ───────────
     const { data: monthHolidays } = await supabase
       .from('holidays')
-      .select('date, type')
+      .select('id, date, type')
       .gte('date', monthStart)
       .lte('date', todayStr)
-    const holidayDates = new Set((monthHolidays || []).map(h => h.date))
+    // Only public/company holidays exclude the date for EVERYONE. Optional
+    // holidays only exclude the date for employees who actually opted in
+    // (see holiday_optins lookup below) — everyone else still owes attendance.
+    const mandatoryHolidayDates = new Set(
+      (monthHolidays || []).filter(h => h.type !== 'optional').map(h => h.date)
+    )
+    const optionalHolidays = (monthHolidays || []).filter(h => h.type === 'optional')
+    const optionalHolidayIds = optionalHolidays.map(h => h.id)
+
+    const { data: optins } = optionalHolidayIds.length
+      ? await supabase
+          .from('holiday_optins')
+          .select('employee_id, holiday_id')
+          .in('holiday_id', optionalHolidayIds)
+      : { data: [] }
+    const optinDatesByEmployee = {}
+    for (const optin of optins || []) {
+      const holiday = optionalHolidays.find(h => h.id === optin.holiday_id)
+      if (!holiday) continue
+      if (!optinDatesByEmployee[optin.employee_id]) optinDatesByEmployee[optin.employee_id] = new Set()
+      optinDatesByEmployee[optin.employee_id].add(holiday.date)
+    }
 
     const { data: activeEmployees } = await supabase
       .from('employees')
@@ -315,11 +336,13 @@ export async function runDailyChecks(reviewerEmployeeId) {
       (attendanceRows || []).map(r => `${r.employee_id}:${r.date}`)
     )
 
-    const workingDays = workingDaysInRange(monthStart, todayStr, holidayDates)
+    const workingDays = workingDaysInRange(monthStart, todayStr, mandatoryHolidayDates)
 
     for (const emp of activeEmployees || []) {
       const employeeLeaves = (approvedLeaves || []).filter(l => l.employee_id === emp.id)
+      const employeeOptinDates = optinDatesByEmployee[emp.id] || new Set()
       for (const day of workingDays) {
+        if (employeeOptinDates.has(day)) continue // this employee opted into this optional holiday
         if (hasAttendanceRow.has(`${emp.id}:${day}`)) continue // already counted above, or a fully-worked day
         if (requestedSet.has(`${emp.id}:${day}`)) continue
         const onLeave = employeeLeaves.some(l => l.from_date <= day && day <= l.to_date)

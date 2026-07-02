@@ -411,6 +411,71 @@ describe('runDailyChecks — true absence detection (no attendance row at all)',
     expect(capturedMessage).toContain('1 day(s)')
     vi.useRealTimers()
   })
+
+  it('does not count an optional holiday as absence for an employee who opted in, but does for one who did not', async () => {
+    // Fixed "today" inside the monthly-reminder window (26th of some month)
+    vi.setSystemTime(new Date('2026-03-26T00:00:00.000Z'))
+
+    const optionalHoliday = { id: 'h-optional', date: '2026-03-10', type: 'optional' }
+    const employees = [{ id: 'emp-opted-in' }, { id: 'emp-opted-out' }]
+
+    // Give both employees an attendance row on every working day in the
+    // month-to-date range EXCEPT 2026-03-10, so that date is the only
+    // remaining candidate "no attendance row" day for the no-show scan —
+    // isolating the optional-holiday exclusion logic under test rather than
+    // conflating it with 18 unrelated no-show days from the rest of March.
+    const otherWorkingDays = [
+      '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06',
+      '2026-03-09', '2026-03-11', '2026-03-12', '2026-03-13',
+      '2026-03-16', '2026-03-17', '2026-03-18', '2026-03-19', '2026-03-20',
+      '2026-03-23', '2026-03-24', '2026-03-25', '2026-03-26',
+    ]
+    const anyRowRows = otherWorkingDays.flatMap(date => ([
+      { employee_id: 'emp-opted-in', date },
+      { employee_id: 'emp-opted-out', date },
+    ]))
+
+    const insertedPayloads = []
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain(employees, [])
+      if (table === 'holidays') return holidaysChain([optionalHoliday])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], anyRowRows)
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'holiday_optins') {
+        const chain = {
+          select: vi.fn(() => chain),
+          in: vi.fn(() => Promise.resolve({
+            data: [{ employee_id: 'emp-opted-in', holiday_id: 'h-optional' }],
+            error: null,
+          })),
+        }
+        return chain
+      }
+      if (table === 'notifications') return notificationsChain({
+        onInsert: (payload) => insertedPayloads.push(payload),
+      })
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('hr-1')
+
+    const optedInCall = insertedPayloads.find(p => p.employee_id === 'emp-opted-in')
+    const optedOutCall = insertedPayloads.find(p => p.employee_id === 'emp-opted-out')
+
+    // emp-opted-in has no other unresolved days in this fixture, so opting into
+    // the one candidate day (2026-03-10) must mean zero unresolved days -> no
+    // notification at all. A conditional assertion here would silently pass
+    // even if the exclusion logic were broken, so assert the call's absence
+    // directly rather than only checking its contents when present.
+    expect(optedInCall).toBeUndefined()
+    // emp-opted-out SHOULD be nudged — it's a normal working day for them
+    expect(optedOutCall).toBeTruthy()
+    expect(optedOutCall.message).toContain('1 day')
+
+    vi.useRealTimers()
+  })
 })
 
 describe('runDailyChecks — weekly attendance report', () => {
