@@ -18,9 +18,34 @@ export async function submitRegularizationRequest(employeeId, items) {
     if (!item.reason || !item.reason.trim()) throw new Error('Each entry needs a reason.')
   }
 
+  const { data: employee, error: empError } = await supabase
+    .from('employees')
+    .select('full_name, manager_id')
+    .eq('id', employeeId)
+    .single()
+  if (empError) throw empError
+
+  const { data: employeeLeaves } = await supabase
+    .from('leave_requests')
+    .select('from_date, to_date, status')
+    .eq('employee_id', employeeId)
+  const approvedLeaves = (employeeLeaves || []).filter(l => l.status === 'approved')
+
+  const leaveItem = items.find(item =>
+    approvedLeaves.some(l => item.date >= l.from_date && item.date <= l.to_date)
+  )
+  if (leaveItem) {
+    throw new Error(`You are on approved leave on ${leaveItem.date} — attendance cannot be regularized for a leave day.`)
+  }
+
+  // If the employee has no manager, the request skips the manager stage
+  // entirely and goes straight into the Admin/HR queue.
+  const hasManager = !!employee?.manager_id
+  const initialManagerDecision = hasManager ? 'pending' : 'approved'
+
   const { data: request, error: reqError } = await supabase
     .from('attendance_regularization_requests')
-    .insert({ employee_id: employeeId, status: 'pending_manager' })
+    .insert({ employee_id: employeeId, status: hasManager ? 'pending_manager' : 'pending_admin' })
     .select()
     .single()
   if (reqError) throw reqError
@@ -33,14 +58,9 @@ export async function submitRegularizationRequest(employeeId, items) {
       proposed_check_in:  timeToISO(item.date, item.proposedCheckIn),
       proposed_check_out: timeToISO(item.date, item.proposedCheckOut),
       reason:             item.reason.trim(),
+      manager_decision:   initialManagerDecision,
     })))
   if (itemsError) throw itemsError
-
-  const { data: employee } = await supabase
-    .from('employees')
-    .select('full_name, manager_id')
-    .eq('id', employeeId)
-    .single()
 
   let recipientId = employee?.manager_id
   if (!recipientId) {
@@ -59,8 +79,8 @@ export async function submitRegularizationRequest(employeeId, items) {
   if (recipientId) {
     await createNotification({
       employeeId: recipientId,
-      type: 'attendance_regularization_submitted',
-      title: 'Attendance Regularization Request',
+      type: hasManager ? 'attendance_regularization_submitted' : 'attendance_regularization_pending_admin',
+      title: hasManager ? 'Attendance Regularization Request' : 'Regularization Request — Awaiting Admin',
       message: `${employee?.full_name || 'An employee'} submitted a regularization request for ${items.length} date(s).`,
       metadata: { request_id: request.id },
     })

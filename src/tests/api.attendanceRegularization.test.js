@@ -80,6 +80,17 @@ describe('submitRegularizationRequest', () => {
 
     supabase.from
       .mockReturnValueOnce({
+        // fetch employee
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        // fetch approved leaves
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+      })
+      .mockReturnValueOnce({
         // insert request
         insert: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
@@ -87,13 +98,10 @@ describe('submitRegularizationRequest', () => {
       })
       .mockReturnValueOnce({
         // insert items
-        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
-      })
-      .mockReturnValueOnce({
-        // fetch employee
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+        insert: vi.fn().mockImplementation(rows => {
+          expect(rows[0].manager_decision).toBe('pending')
+          return Promise.resolve({ data: null, error: null })
+        }),
       })
 
     const result = await submitRegularizationRequest('emp-1', validItems)
@@ -107,24 +115,31 @@ describe('submitRegularizationRequest', () => {
     }))
   })
 
-  it('falls back to notifying HR/Admin when employee has no manager_id, excluding self', async () => {
+  it('falls back to notifying HR/Admin when employee has no manager_id, excluding self, and skips items straight to manager-approved', async () => {
     const mockRequest = { id: 'req-2' }
     const mockEmployee = { full_name: 'HR Person', manager_id: null }
     const hrList = [{ id: 'hr-1' }]
 
     supabase.from
       .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+      })
+      .mockReturnValueOnce({
         insert: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({ data: mockRequest, error: null }),
       })
       .mockReturnValueOnce({
-        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
-      })
-      .mockReturnValueOnce({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+        insert: vi.fn().mockImplementation(rows => {
+          expect(rows[0].manager_decision).toBe('approved')
+          return Promise.resolve({ data: null, error: null })
+        }),
       })
       .mockReturnValueOnce({
         select: vi.fn().mockReturnThis(),
@@ -138,16 +153,76 @@ describe('submitRegularizationRequest', () => {
 
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
       employeeId: 'hr-1',
-      type: 'attendance_regularization_submitted',
+      type: 'attendance_regularization_pending_admin',
     }))
   })
 
+  it('throws when a proposed date falls on an approved leave day', async () => {
+    const mockEmployee = { full_name: 'Jane Doe', manager_id: 'mgr-1' }
+
+    supabase.from
+      .mockReturnValueOnce({
+        // fetch employee
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        // fetch employee's leaves — overlaps validItems' 2026-06-17 date
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: [{ from_date: '2026-06-15', to_date: '2026-06-20', status: 'approved' }], error: null }),
+      })
+
+    await expect(submitRegularizationRequest('emp-1', validItems)).rejects.toThrow(/approved leave/i)
+    // Must not proceed to write the request or items
+    expect(supabase.from).not.toHaveBeenCalledWith('attendance_regularization_requests')
+  })
+
+  it('does not block on a pending (not yet approved) leave overlapping the date', async () => {
+    const mockRequest = { id: 'req-3' }
+    const mockEmployee = { full_name: 'Jane Doe', manager_id: 'mgr-1' }
+
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        // same date range, but status is 'pending' — must not block
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: [{ from_date: '2026-06-15', to_date: '2026-06-20', status: 'pending' }], error: null }),
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockRequest, error: null }),
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
+
+    const result = await submitRegularizationRequest('emp-1', validItems)
+    expect(result).toEqual(mockRequest)
+  })
+
   it('throws when the request insert fails', async () => {
-    supabase.from.mockReturnValueOnce({
-      insert: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Insert failed' } }),
-    })
+    const mockEmployee = { full_name: 'Jane Doe', manager_id: 'mgr-1' }
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEmployee, error: null }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Insert failed' } }),
+      })
 
     await expect(submitRegularizationRequest('emp-1', validItems)).rejects.toThrow('Insert failed')
   })
