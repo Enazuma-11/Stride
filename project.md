@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-02
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,26 +19,30 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`e6f2236` — Add design spec for attendance overhaul
+`5f4f004` — Wire up My Regularization Requests list, add midnight-span indicator, drop stale office-hours copy
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
 
 ## IN PROGRESS
 
-### 🔵 Attendance Overhaul (design approved, implementation not started)
-Spec: `docs/superpowers/specs/2026-07-01-attendance-overhaul-design.md`
-- Drops late-mark entirely (status judged on total hours worked only)
-- Multiple check-in/out sessions per day (capped at 5), midnight-spanning sessions split across the two calendar days
-- Employee regularization requests (proposed times + reason, multi-date) → manager approve/reject per date → Admin/HR applies correction
-- HR/Admin direct session-level override (extends `AttendanceOverridePanel.jsx`)
-- Weekly hours widget (employee, on Attendance page + Dashboard) and Weekly report tab + Monday notification (HR/Admin)
-- Monthly regularization reminder, 25th → month-end
-- New tables needed: `attendance_sessions`, `attendance_regularization_requests`, `attendance_regularization_items`
-- **Next step:** writing-plans skill → implementation plan, not yet executed
-
 ### 🔵 Leave / Holiday Overhaul (not yet designed)
-Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-yearly (Jan/July) opt-in holiday calendar with 2-week submission windows. Queued as its own design after Attendance implementation lands.
+Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-yearly (Jan/July) opt-in holiday calendar with 2-week submission windows. To be designed next.
+
+## RECENTLY COMPLETED
+
+### Attendance Overhaul (2026-07-02)
+Built via 17-task plan (subagent-driven-development) + a final whole-branch review round.
+Spec: `docs/superpowers/specs/2026-07-01-attendance-overhaul-design.md`
+Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
+- Drops late-mark entirely — status judged purely on total hours worked
+- Multiple check-in/out sessions per day (capped at 5), midnight-spanning sessions split across the two calendar days
+- Weekly hours: employee widget (Attendance page + Dashboard), HR/Admin Weekly tab, Monday notification
+- Employee regularization requests (proposed times + reason, multi-date) → manager approve/reject per date → Admin/HR applies correction; employees can view status and withdraw pending requests
+- HR/Admin direct session-level override (`AttendanceOverridePanel.jsx` reworked to edit the full session list per day)
+- Monthly regularization reminder (25th → month-end), including true no-show absence detection (not just half-days) — excludes weekends, company holidays, approved leave, already-requested dates
+- New tables: `attendance_sessions`, `attendance_regularization_requests`, `attendance_regularization_items` (migrations: `supabase_migration_attendance_sessions.sql`, `supabase_migration_attendance_regularization.sql` — ⚠️ **must be run manually in both Supabase projects**, not yet applied as of this writing)
+- 181 tests passing (up from 105 at start of session)
 
 ---
 
@@ -104,13 +108,14 @@ Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-year
 - Record offline leave for employee
 - Leave approval deducts paid days + tracks unpaid days separately
 
-### ✅ Attendance
-- Check-in / check-out with WFH toggle
-- Late mark auto-detection (after 9:30am)
-- Half day auto-detection on early checkout (deducts 0.5 from casual_sick)
-- Monthly calendar view
-- HR attendance override (30 days back)
+### ✅ Attendance (overhauled 2026-07-02 — see RECENTLY COMPLETED)
+- Multi-session check-in/out (up to 5/day) with WFH toggle per session
+- No more late-mark — status judged purely on total hours worked; midnight-spanning sessions split across the two calendar days
+- Weekly hours (employee widget + HR Weekly tab), monthly calendar view
+- Regularization workflow: employee requests → manager approves/rejects per date → Admin/HR applies; employee can view/withdraw pending requests
+- HR attendance override — full session-level editing per employee/date
 - HR attendance report with export
+- ⚠️ Requires `supabase_migration_attendance_sessions.sql` and `supabase_migration_attendance_regularization.sql` to be run manually — see PENDING ACTIONS
 
 ### ✅ Profile (8 tabs)
 - Personal, Work, Contact, Payroll, Compliance, Emergency, Skills, Exit
@@ -203,6 +208,8 @@ Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-year
 |---|---|---|
 | 🔴 HIGH | SQL: lr_delete_own policy | Run in both Supabase: `CREATE POLICY "lr_delete_own" ON leave_requests FOR DELETE TO authenticated USING (employee_id = (SELECT id FROM employees WHERE user_id = auth.uid()));` |
 | 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns |
+| 🔴 HIGH | SQL: supabase_migration_attendance_sessions.sql | Run in both Supabase — required for the new Attendance overhaul (multi-session check-in/out won't work until this runs) |
+| 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
@@ -235,6 +242,8 @@ Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-year
 | supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
 | supabase_migration_onboarding_documents_fix.sql | ✅ |
 | supabase_migration_education_docs.sql | ✅ |
+| supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
+| supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
 
@@ -249,6 +258,8 @@ Requested alongside Attendance — employee-chosen paid/unpaid leave, twice-year
 | supabase_migration_employee_documents_schema_sync.sql | ✅ (Test-only fix — Production already had these columns) |
 | supabase_migration_storage_policies_test_sync.sql | ✅ (Test-only fix — Production already had these policies) |
 | supabase_migration_education_docs.sql | ✅ |
+| supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
+| supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
 
 ---
 
