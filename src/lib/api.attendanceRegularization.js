@@ -65,32 +65,42 @@ export async function submitRegularizationRequest(employeeId, items) {
     })))
   if (itemsError) throw itemsError
 
-  let recipientId = employee?.manager_id
-  if (!recipientId) {
-    // Exclude the submitting employee themselves — an HR/Admin with no
-    // manager_id must not end up as their own request's reviewer.
-    // Uses an RPC (not a direct table query) because the employees_select_own
-    // RLS policy would otherwise silently return zero rows for a non-HR/Admin
-    // caller — the notification would just never be created, with no error.
-    const { data: hrList } = await supabase
-      .rpc('get_hr_admin_employee_ids', { exclude_id: employeeId })
-    recipientId = hrList?.[0]?.id
-  }
-
-  if (recipientId) {
-    // Notification delivery is best-effort — the request itself is already
-    // committed above, so a notification hiccup must not surface as a
-    // failure to the employee who successfully submitted their request.
-    try {
+  // Notification delivery is best-effort — the request itself is already
+  // committed above, so a notification hiccup must not surface as a
+  // failure to the employee who successfully submitted their request.
+  try {
+    const message = `${employee?.full_name || 'An employee'} submitted a regularization request for ${items.length} date(s).`
+    if (hasManager) {
       await createNotification({
-        employeeId: recipientId,
-        type: hasManager ? 'attendance_regularization_submitted' : 'attendance_regularization_pending_admin',
-        title: hasManager ? 'Attendance Regularization Request' : 'Regularization Request — Awaiting Admin',
-        message: `${employee?.full_name || 'An employee'} submitted a regularization request for ${items.length} date(s).`,
+        employeeId: employee.manager_id,
+        type: 'attendance_regularization_submitted',
+        title: 'Attendance Regularization Request',
+        message,
         metadata: { request_id: request.id },
       })
-    } catch (e) { console.warn('Regularization submit notification failed:', e.message) }
-  }
+    } else {
+      // No manager — notify every active HR/Admin, not just one. Exclude
+      // the submitting employee themselves — an HR/Admin with no manager_id
+      // must not end up as their own request's reviewer.
+      // Uses an RPC (not a direct table query) because the employees_select_own
+      // RLS policy would otherwise silently return zero rows for a non-HR/Admin
+      // caller — the notification would just never be created, with no error.
+      const { data: hrList } = await supabase
+        .rpc('get_hr_admin_employee_ids', { exclude_id: employeeId })
+      if (hrList?.length) {
+        await supabase.from('notifications').insert(
+          hrList.map(hr => ({
+            employee_id: hr.id,
+            type: 'attendance_regularization_pending_admin',
+            title: 'Regularization Request — Awaiting Admin',
+            message,
+            metadata: { request_id: request.id },
+            is_read: false,
+          }))
+        )
+      }
+    }
+  } catch (e) { console.warn('Regularization submit notification failed:', e.message) }
 
   return request
 }
@@ -183,19 +193,23 @@ export async function managerDecideItem(itemId, decision, managerId) {
         metadata: { item_id: itemId },
       })
     } else {
-      // RPC, not a direct table query — see submitRegularizationRequest's
-      // comment above for why (RLS would otherwise silently return zero rows
-      // for a manager's session, which isn't necessarily HR/Admin itself).
+      // Notify every active HR/Admin, not just one. RPC, not a direct table
+      // query — see submitRegularizationRequest's comment above for why
+      // (RLS would otherwise silently return zero rows for a manager's
+      // session, which isn't necessarily HR/Admin itself).
       const { data: hrList } = await supabase
         .rpc('get_hr_admin_employee_ids')
-      if (hrList?.[0]?.id) {
-        await createNotification({
-          employeeId: hrList[0].id,
-          type: 'attendance_regularization_pending_admin',
-          title: 'Regularization Approved — Awaiting Admin',
-          message: `A manager-approved regularization for ${item.date} is awaiting your final action.`,
-          metadata: { item_id: itemId },
-        })
+      if (hrList?.length) {
+        await supabase.from('notifications').insert(
+          hrList.map(hr => ({
+            employee_id: hr.id,
+            type: 'attendance_regularization_pending_admin',
+            title: 'Regularization Approved — Awaiting Admin',
+            message: `A manager-approved regularization for ${item.date} is awaiting your final action.`,
+            metadata: { item_id: itemId },
+            is_read: false,
+          }))
+        )
       }
     }
   } catch (e) { console.warn('Regularization decision notification failed:', e.message) }

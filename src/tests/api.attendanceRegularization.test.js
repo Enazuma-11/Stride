@@ -161,10 +161,11 @@ describe('submitRegularizationRequest', () => {
     expect(storedCheckOut.getMinutes()).toBe(47)
   })
 
-  it('falls back to notifying HR/Admin when employee has no manager_id, excluding self, and skips items straight to manager-approved', async () => {
+  it('falls back to notifying EVERY active HR/Admin when employee has no manager_id, excluding self, and skips items straight to manager-approved', async () => {
     const mockRequest = { id: 'req-2' }
     const mockEmployee = { full_name: 'HR Person', manager_id: null }
-    const hrList = [{ id: 'hr-1' }]
+    const hrList = [{ id: 'hr-1' }, { id: 'admin-1' }]
+    let notificationRows
 
     supabase.from
       .mockReturnValueOnce({
@@ -187,16 +188,22 @@ describe('submitRegularizationRequest', () => {
           return Promise.resolve({ data: null, error: null })
         }),
       })
+      .mockReturnValueOnce({
+        // broadcast notification insert
+        insert: vi.fn().mockImplementation(rows => {
+          notificationRows = rows
+          return Promise.resolve({ data: null, error: null })
+        }),
+      })
 
     supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
     await submitRegularizationRequest('emp-1', validItems)
 
     expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids', { exclude_id: 'emp-1' })
-    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
-      employeeId: 'hr-1',
-      type: 'attendance_regularization_pending_admin',
-    }))
+    expect(notificationRows).toHaveLength(2)
+    expect(notificationRows.map(r => r.employee_id)).toEqual(['hr-1', 'admin-1'])
+    expect(notificationRows[0].type).toBe('attendance_regularization_pending_admin')
   })
 
   it('throws when a proposed date falls on an approved leave day', async () => {
@@ -423,10 +430,11 @@ describe('managerDecideItem', () => {
     expect(supabase.from).not.toHaveBeenCalled()
   })
 
-  it('approves an item, recalculates request status, and notifies HR/admin', async () => {
+  it('approves an item, recalculates request status, and notifies EVERY active HR/admin', async () => {
     const item = { id: 'item-1', date: '2026-06-17', manager_decision: 'approved', request: { id: 'req-1', employee_id: 'emp-1' } }
     const rollupItems = [{ manager_decision: 'approved', admin_decision: null }]
-    const hrList = [{ id: 'hr-1' }]
+    const hrList = [{ id: 'hr-1' }, { id: 'admin-1' }]
+    let notificationRows
 
     supabase.from
       .mockReturnValueOnce({
@@ -446,6 +454,13 @@ describe('managerDecideItem', () => {
         update: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       })
+      .mockReturnValueOnce({
+        // broadcast notification insert
+        insert: vi.fn().mockImplementation(rows => {
+          notificationRows = rows
+          return Promise.resolve({ data: null, error: null })
+        }),
+      })
 
     supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
@@ -453,10 +468,9 @@ describe('managerDecideItem', () => {
 
     expect(result).toEqual(item)
     expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids')
-    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
-      employeeId: 'hr-1',
-      type: 'attendance_regularization_pending_admin',
-    }))
+    expect(notificationRows).toHaveLength(2)
+    expect(notificationRows.map(r => r.employee_id)).toEqual(['hr-1', 'admin-1'])
+    expect(notificationRows[0].type).toBe('attendance_regularization_pending_admin')
   })
 
   it('rejects an item, recalculates request status, and notifies the employee', async () => {
@@ -705,6 +719,10 @@ describe('request status rollup', () => {
       .mockReturnValueOnce({
         update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
       })
+      .mockReturnValueOnce({
+        // broadcast notification insert
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      })
 
     supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
@@ -734,6 +752,10 @@ describe('request status rollup', () => {
       })
       .mockReturnValueOnce({
         update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+      })
+      .mockReturnValueOnce({
+        // broadcast notification insert
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       })
 
     supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
