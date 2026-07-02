@@ -1,8 +1,8 @@
 // ─── STRIDE SERVICE WORKER ────────────────────────────────────────────────────
 // SporTech Innovation Lab — Full offline PWA support
 
-const CACHE_NAME = 'stride-v3'
-const STATIC_CACHE = 'stride-static-v3'
+const CACHE_NAME = 'stride-v4'
+const STATIC_CACHE = 'stride-static-v4'
 const API_CACHE = 'stride-api-v1'
 
 // Assets to cache immediately on install
@@ -63,9 +63,11 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  // App shell & static assets — stale while revalidate
+  // App shell & static assets — network first, so a new deploy is picked up
+  // immediately rather than serving a stale cached bundle until the next
+  // background revalidation catches up. Falls back to cache when offline.
   if (url.hostname === self.location.hostname) {
-    event.respondWith(staleWhileRevalidate(request))
+    event.respondWith(networkFirst(request))
     return
   }
 
@@ -131,19 +133,6 @@ async function networkFirstWithCache(request, cacheName, ttlSeconds) {
       headers: { 'Content-Type': 'application/json' },
     })
   }
-}
-
-// Stale while revalidate — serve cache instantly, update in background
-async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request)
-  const fetchPromise = fetch(request).then(response => {
-    if (response.ok) {
-      caches.open(STATIC_CACHE).then(cache => cache.put(request, response.clone()))
-    }
-    return response
-  }).catch(() => null)
-
-  return cached || fetchPromise || offlinePage()
 }
 
 // Offline fallback page

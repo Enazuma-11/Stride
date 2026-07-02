@@ -78,13 +78,18 @@ export async function submitRegularizationRequest(employeeId, items) {
   }
 
   if (recipientId) {
-    await createNotification({
-      employeeId: recipientId,
-      type: hasManager ? 'attendance_regularization_submitted' : 'attendance_regularization_pending_admin',
-      title: hasManager ? 'Attendance Regularization Request' : 'Regularization Request — Awaiting Admin',
-      message: `${employee?.full_name || 'An employee'} submitted a regularization request for ${items.length} date(s).`,
-      metadata: { request_id: request.id },
-    })
+    // Notification delivery is best-effort — the request itself is already
+    // committed above, so a notification hiccup must not surface as a
+    // failure to the employee who successfully submitted their request.
+    try {
+      await createNotification({
+        employeeId: recipientId,
+        type: hasManager ? 'attendance_regularization_submitted' : 'attendance_regularization_pending_admin',
+        title: hasManager ? 'Attendance Regularization Request' : 'Regularization Request — Awaiting Admin',
+        message: `${employee?.full_name || 'An employee'} submitted a regularization request for ${items.length} date(s).`,
+        metadata: { request_id: request.id },
+      })
+    } catch (e) { console.warn('Regularization submit notification failed:', e.message) }
   }
 
   return request
@@ -165,30 +170,35 @@ export async function managerDecideItem(itemId, decision, managerId) {
 
   await recalcRequestStatus(item.request.id)
 
-  if (decision === 'rejected') {
-    await createNotification({
-      employeeId: item.request.employee_id,
-      type: 'attendance_regularization_decided',
-      title: 'Regularization Request Rejected',
-      message: `Your manager rejected your regularization request for ${item.date}.`,
-      metadata: { item_id: itemId },
-    })
-  } else {
-    // RPC, not a direct table query — see submitRegularizationRequest's
-    // comment above for why (RLS would otherwise silently return zero rows
-    // for a manager's session, which isn't necessarily HR/Admin itself).
-    const { data: hrList } = await supabase
-      .rpc('get_hr_admin_employee_ids')
-    if (hrList?.[0]?.id) {
+  // Notification delivery is best-effort — the decision itself is already
+  // committed above, so a notification hiccup must not surface as a
+  // failure to the manager who successfully recorded their decision.
+  try {
+    if (decision === 'rejected') {
       await createNotification({
-        employeeId: hrList[0].id,
-        type: 'attendance_regularization_pending_admin',
-        title: 'Regularization Approved — Awaiting Admin',
-        message: `A manager-approved regularization for ${item.date} is awaiting your final action.`,
+        employeeId: item.request.employee_id,
+        type: 'attendance_regularization_decided',
+        title: 'Regularization Request Rejected',
+        message: `Your manager rejected your regularization request for ${item.date}.`,
         metadata: { item_id: itemId },
       })
+    } else {
+      // RPC, not a direct table query — see submitRegularizationRequest's
+      // comment above for why (RLS would otherwise silently return zero rows
+      // for a manager's session, which isn't necessarily HR/Admin itself).
+      const { data: hrList } = await supabase
+        .rpc('get_hr_admin_employee_ids')
+      if (hrList?.[0]?.id) {
+        await createNotification({
+          employeeId: hrList[0].id,
+          type: 'attendance_regularization_pending_admin',
+          title: 'Regularization Approved — Awaiting Admin',
+          message: `A manager-approved regularization for ${item.date} is awaiting your final action.`,
+          metadata: { item_id: itemId },
+        })
+      }
     }
-  }
+  } catch (e) { console.warn('Regularization decision notification failed:', e.message) }
 
   return item
 }
@@ -234,13 +244,18 @@ export async function adminApplyItem(itemId, finalCheckIn, finalCheckOut, adminI
 
   await recalcRequestStatus(item.request.id)
 
-  await createNotification({
-    employeeId: item.request.employee_id,
-    type: 'attendance_regularization_decided',
-    title: 'Attendance Corrected',
-    message: `Your attendance for ${item.date} has been corrected as requested.`,
-    metadata: { item_id: itemId },
-  })
+  // Notification delivery is best-effort — the correction is already
+  // applied above, so a notification hiccup must not surface as a
+  // failure to the admin who successfully applied it.
+  try {
+    await createNotification({
+      employeeId: item.request.employee_id,
+      type: 'attendance_regularization_decided',
+      title: 'Attendance Corrected',
+      message: `Your attendance for ${item.date} has been corrected as requested.`,
+      metadata: { item_id: itemId },
+    })
+  } catch (e) { console.warn('Regularization apply notification failed:', e.message) }
 
   return item
 }
@@ -256,13 +271,18 @@ export async function adminRejectItem(itemId, adminId) {
 
   await recalcRequestStatus(item.request.id)
 
-  await createNotification({
-    employeeId: item.request.employee_id,
-    type: 'attendance_regularization_decided',
-    title: 'Regularization Request Rejected',
-    message: `Admin rejected your regularization request for ${item.date}.`,
-    metadata: { item_id: itemId },
-  })
+  // Notification delivery is best-effort — the rejection is already
+  // recorded above, so a notification hiccup must not surface as a
+  // failure to the admin who successfully recorded it.
+  try {
+    await createNotification({
+      employeeId: item.request.employee_id,
+      type: 'attendance_regularization_decided',
+      title: 'Regularization Request Rejected',
+      message: `Admin rejected your regularization request for ${item.date}.`,
+      metadata: { item_id: itemId },
+    })
+  } catch (e) { console.warn('Regularization reject notification failed:', e.message) }
 
   return item
 }
