@@ -6,6 +6,7 @@ import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import { getMyLeaveBalances, getMyLeaveRequests, applyLeave, cancelLeave } from '../../lib/api'
 import DateRangePicker from '../../components/DateRangePicker'
+import HolidayOptinPanel from '../../components/HolidayOptinPanel'
 
 
 
@@ -272,6 +273,7 @@ export default function LeavePage() {
           { id: 'overview', label: '📊 Overview' },
           { id: 'apply',    label: '+ Apply'     },
           { id: 'history',  label: '📋 History'  },
+          { id: 'holidays', label: 'Holiday Calendar' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 18px', borderRadius: 7, border: 'none',
@@ -312,6 +314,9 @@ export default function LeavePage() {
           employeeId={employee.id}
           onCancelled={id => { setRequests(r => r.filter(x => x.id !== id)); load() }}
         />
+      )}
+      {tab === 'holidays' && (
+        <HolidayOptinPanel employeeId={employee.id} />
       )}
     </AppShell>
   )
