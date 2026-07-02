@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`1b341e2` — Fix orphaned no-manager regularization requests; block requests on approved leave days
+`237609e` — Fix HR/Admin notifications silently dropped by RLS for non-privileged sessions
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -212,6 +212,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns |
 | 🔴 HIGH | SQL: supabase_migration_attendance_sessions.sql | Run in both Supabase — required for the new Attendance overhaul (multi-session check-in/out won't work until this runs) |
 | 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
+| 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
