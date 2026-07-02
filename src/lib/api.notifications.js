@@ -406,16 +406,29 @@ export async function runDailyChecks(reviewerEmployeeId) {
       : todayStr === `${optinWindow.label.split('-')[0]}-07-01`
 
     if (windowOpensToday && (activeEmployeesForOptin || []).length > 0) {
-      await supabase.from('notifications').insert(
-        (activeEmployeesForOptin || []).map(emp => ({
-          employee_id: emp.id,
-          type: 'holiday_optin_window_open',
-          title: 'Holiday Opt-In Window Open',
-          message: `You can now pick your optional holidays. Submit by ${optinWindow.closesOn}.`,
-          metadata: { window: optinWindow.label },
-          is_read: false,
-        }))
-      )
+      // This is an all-or-nothing broadcast (everyone gets notified or no one
+      // does), so a single existence check is enough — no per-employee dedup
+      // needed. Without this, two HR/Admin sessions loading TopBar on the same
+      // day (e.g. two staff, or one staff with two tabs) would each pass the
+      // sessionStorage gate independently and double-broadcast to everyone.
+      const { count: alreadyBroadcastToday } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('type', 'holiday_optin_window_open')
+        .gte('created_at', todayStr)
+
+      if (alreadyBroadcastToday === 0) {
+        await supabase.from('notifications').insert(
+          (activeEmployeesForOptin || []).map(emp => ({
+            employee_id: emp.id,
+            type: 'holiday_optin_window_open',
+            title: 'Holiday Opt-In Window Open',
+            message: `You can now pick your optional holidays. Submit by ${optinWindow.closesOn}.`,
+            metadata: { window: optinWindow.label },
+            is_read: false,
+          }))
+        )
+      }
     }
 
     // Closing-soon reminder: last 4 days of the window, only to employees

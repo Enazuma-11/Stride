@@ -582,6 +582,42 @@ describe('runDailyChecks — holiday opt-in window notifications', () => {
     vi.useRealTimers()
   })
 
+  it('does not send a second window-open broadcast on the same day if one was already sent', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    const employees = [{ id: 'emp-1' }, { id: 'emp-2' }]
+    let broadcastInsertCalled = false
+
+    supabase.from.mockImplementation((table) => {
+      if (table === 'employees') return employeesChain(employees, [])
+      if (table === 'notifications') return notificationsChain({
+        // Simulate a `holiday_optin_window_open` notification already existing today
+        // (e.g. from an earlier runDailyChecks call in another tab/session).
+        notificationCount: 1,
+        onInsert: (payload) => {
+          const rows = Array.isArray(payload) ? payload : [payload]
+          if (rows.some(r => r.type === 'holiday_optin_window_open')) broadcastInsertCalled = true
+        },
+      })
+      if (table === 'holidays') return holidaysChain([])
+      if (table === 'leave_requests') return leaveRequestsChain([])
+      if (table === 'attendance') return attendanceChain([], [])
+      if (table === 'attendance_regularization_items') return regItemsChain([])
+      if (table === 'holiday_optin_submissions') {
+        const chain = { select: vi.fn(() => chain), eq: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+        return chain
+      }
+      const chain = { select: vi.fn(() => chain), eq: vi.fn(() => chain), in: vi.fn(() => chain), gte: vi.fn(() => chain), lte: vi.fn(() => Promise.resolve({ data: [], error: null })) }
+      return chain
+    })
+
+    await runDailyChecks('reviewer-1')
+
+    expect(broadcastInsertCalled).toBe(false)
+
+    vi.useRealTimers()
+  })
+
   it('does not fire the window-open notification on a day outside any window', async () => {
     vi.setSystemTime(new Date('2026-02-15T00:00:00.000Z'))
 
