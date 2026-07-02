@@ -105,6 +105,41 @@ describe('applyLeave', () => {
     })
     await expect(applyLeave(leaveData)).rejects.toThrow('Insert failed')
   })
+
+  it('looks up HR/Admin recipients via RPC (not a direct table query, since RLS would silently return zero rows for a regular employee session) and notifies each', async () => {
+    const mockLeave = { id: 'leave1', ...leaveData, status: 'pending' }
+    const hrAdmins = [{ id: 'hr-1' }, { id: 'admin-1' }]
+    let notificationRows
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+            }),
+          }),
+        }
+      }
+      if (table === 'notifications') {
+        return {
+          insert: vi.fn().mockImplementation(rows => {
+            notificationRows = rows
+            return Promise.resolve({ data: null, error: null })
+          }),
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    supabase.rpc.mockResolvedValueOnce({ data: hrAdmins, error: null })
+
+    await applyLeave(leaveData)
+
+    expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids', { exclude_id: 'emp1' })
+    expect(notificationRows).toHaveLength(2)
+    expect(notificationRows.map(r => r.employee_id)).toEqual(['hr-1', 'admin-1'])
+    expect(notificationRows[0].type).toBe('leave_request')
+  })
 })
 
 // ── updateLeaveStatus ─────────────────────────────────────────────────────────

@@ -69,13 +69,11 @@ export async function submitRegularizationRequest(employeeId, items) {
   if (!recipientId) {
     // Exclude the submitting employee themselves — an HR/Admin with no
     // manager_id must not end up as their own request's reviewer.
+    // Uses an RPC (not a direct table query) because the employees_select_own
+    // RLS policy would otherwise silently return zero rows for a non-HR/Admin
+    // caller — the notification would just never be created, with no error.
     const { data: hrList } = await supabase
-      .from('employees')
-      .select('id')
-      .in('role_type', ['hr', 'admin'])
-      .eq('status', 'active')
-      .neq('id', employeeId)
-      .limit(1)
+      .rpc('get_hr_admin_employee_ids', { exclude_id: employeeId })
     recipientId = hrList?.[0]?.id
   }
 
@@ -176,12 +174,11 @@ export async function managerDecideItem(itemId, decision, managerId) {
       metadata: { item_id: itemId },
     })
   } else {
+    // RPC, not a direct table query — see submitRegularizationRequest's
+    // comment above for why (RLS would otherwise silently return zero rows
+    // for a manager's session, which isn't necessarily HR/Admin itself).
     const { data: hrList } = await supabase
-      .from('employees')
-      .select('id')
-      .in('role_type', ['hr', 'admin'])
-      .eq('status', 'active')
-      .limit(1)
+      .rpc('get_hr_admin_employee_ids')
     if (hrList?.[0]?.id) {
       await createNotification({
         employeeId: hrList[0].id,

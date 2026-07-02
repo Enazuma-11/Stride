@@ -187,16 +187,12 @@ describe('submitRegularizationRequest', () => {
           return Promise.resolve({ data: null, error: null })
         }),
       })
-      .mockReturnValueOnce({
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        neq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
-      })
+
+    supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
     await submitRegularizationRequest('emp-1', validItems)
 
+    expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids', { exclude_id: 'emp-1' })
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
       employeeId: 'hr-1',
       type: 'attendance_regularization_pending_admin',
@@ -450,17 +446,13 @@ describe('managerDecideItem', () => {
         update: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       })
-      .mockReturnValueOnce({
-        // fetch hr/admin recipient
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
-      })
+
+    supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
     const result = await managerDecideItem('item-1', 'approved', 'mgr-1')
 
     expect(result).toEqual(item)
+    expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids')
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
       employeeId: 'hr-1',
       type: 'attendance_regularization_pending_admin',
@@ -713,12 +705,8 @@ describe('request status rollup', () => {
       .mockReturnValueOnce({
         update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
       })
-      .mockReturnValueOnce({
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
-      })
+
+    supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
     await managerDecideItem('item-1', 'approved', 'mgr-1')
     expect(capturedUpdate).toEqual({ status: 'pending_manager' })
@@ -747,12 +735,8 @@ describe('request status rollup', () => {
       .mockReturnValueOnce({
         update: vi.fn((payload) => { capturedUpdate = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
       })
-      .mockReturnValueOnce({
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: hrList, error: null }),
-      })
+
+    supabase.rpc.mockResolvedValueOnce({ data: hrList, error: null })
 
     await managerDecideItem('item-1', 'approved', 'mgr-1')
     expect(capturedUpdate).toEqual({ status: 'pending_admin' })

@@ -96,13 +96,12 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
   if (error) throw error
 
   // Notify HR + Admin
+  // RPC, not a direct table query — the employees_select_own RLS policy
+  // would otherwise silently return zero rows for a regular employee's
+  // session, so the notification would never be created (no error).
   try {
     const { data: hrAdmins } = await supabase
-      .from('employees')
-      .select('id')
-      .in('role_type', ['hr', 'admin'])
-      .eq('status', 'active')
-      .neq('id', employeeId)
+      .rpc('get_hr_admin_employee_ids', { exclude_id: employeeId })
     if (hrAdmins?.length) {
       await supabase.from('notifications').insert(
         hrAdmins.map(hr => ({
