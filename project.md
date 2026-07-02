@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`237609e` — Fix HR/Admin notifications silently dropped by RLS for non-privileged sessions
+`ca008ff` — Make regularization notifications best-effort; fix stale service-worker caching
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -213,6 +213,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | 🔴 HIGH | SQL: supabase_migration_attendance_sessions.sql | Run in both Supabase — required for the new Attendance overhaul (multi-session check-in/out won't work until this runs) |
 | 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
 | 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
+| 🔴 HIGH | SQL: supabase_migration_notifications_insert_fix.sql | Run in both Supabase — re-applies the notifications_insert RLS policy (a manager-less employee's first regularization submission hit "row violates row-level security policy" on this table) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
