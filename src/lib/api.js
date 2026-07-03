@@ -212,7 +212,11 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
       .maybeSingle()
 
     if (bal) {
-      const newUsed = Number(bal.used_days || 0) + Number(leave.days)
+      // Use paid_days, not the full day-count — an unpaid request has
+      // paid_days === 0, so approving it must be a genuine no-op on
+      // used_days (symmetric with cancelLeave's reversal, which already
+      // reverses by paid_days, not days).
+      const newUsed = Number(bal.used_days || 0) + Number(leave.paid_days || 0)
       const { error: balErr } = await supabase
         .from('leave_balances')
         .update({ used_days: newUsed })

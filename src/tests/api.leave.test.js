@@ -346,7 +346,7 @@ describe('updateLeaveStatus', () => {
   })
 
   it('on approval, still deducts used_days from balance (paid-request path unaffected by removing auto-split)', async () => {
-    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-15', days: 1, status: 'approved' }
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-15', days: 1, paid_days: 1, unpaid_days: 0, status: 'approved' }
     let balUpdatePayload
 
     supabase.from.mockImplementation(table => {
@@ -377,6 +377,41 @@ describe('updateLeaveStatus', () => {
     // used_days should simply be incremented by the request's day-count —
     // no paid/unpaid split calculation should run here anymore.
     expect(balUpdatePayload).toEqual({ used_days: 3 })
+  })
+
+  it('on approval of an unpaid request (paid_days: 0), used_days is left unchanged — approval is a genuine no-op on balance', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', paid_days: 0, unpaid_days: 2 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 2 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
+
+    // paid_days is 0 for an all-unpaid request, so used_days must stay
+    // exactly where it started (2), not be incremented by the full
+    // day-count (which would incorrectly deduct unpaid leave from balance).
+    expect(balUpdatePayload).toEqual({ used_days: 2 })
   })
 
   it('does not write to leave_requests.paid_days/unpaid_days on approval (that was already decided at apply time)', async () => {
