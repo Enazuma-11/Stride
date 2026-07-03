@@ -490,21 +490,13 @@ export default function HRLeaveManagementPage() {
                     <div style={{ fontSize: 12, color: C.textLight }}>
                       {lt?.label || req.leave_type} · {req.from_date} → {req.to_date} · <strong>{req.days} day{req.days !== 1 ? 's' : ''}</strong>
                       {req.is_half_day && <span style={{ marginLeft: 6, fontSize: 10, color: C.teal, fontWeight: 700 }}>HALF DAY</span>}
+                      {Number(req.unpaid_days) > 0 && <span style={{ marginLeft: 6, fontSize: 10, color: '#d97706', fontWeight: 700 }}>UNPAID</span>}
                     </div>
-                    {/* Show if employee has insufficient balance */}
-                    {(() => {
-                      const empBals = balances.filter(b => b.employee_id === req.employee_id && b.leave_type === req.leave_type && b.year === new Date().getFullYear())
-                      const bal = empBals[0]
-                      if (!bal) return null
-                      const available = Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0))
-                      const unpaid = Math.max(0, Number(req.days) - available)
-                      if (unpaid <= 0) return null
-                      return (
-                        <div style={{ fontSize: 11, color: '#d97706', background: '#fef3c7', padding: '3px 8px', borderRadius: 6, marginTop: 4, display: 'inline-block' }}>
-                          ⚠️ {unpaid} day{unpaid !== 1 ? 's' : ''} will be unpaid (LOP)
-                        </div>
-                      )
-                    })()}
+                    {Number(req.unpaid_days) > 0 && (
+                      <div style={{ fontSize: 11, color: '#d97706', background: '#fef3c7', padding: '3px 8px', borderRadius: 6, marginTop: 4, display: 'inline-block' }}>
+                        🏷️ {req.unpaid_days} day{Number(req.unpaid_days) !== 1 ? 's' : ''} unpaid — won't deduct from balance
+                      </div>
+                    )}
                     <div style={{ fontSize: 11, color: C.textLight, marginTop: 2 }}>"{req.reason}"</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
