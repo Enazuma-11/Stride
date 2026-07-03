@@ -5,10 +5,16 @@ import {
   getMyLeaveRequests,
   applyLeave,
   updateLeaveStatus,
+  cancelLeave,
   hrAdjustLeave,
   hrSetLeaveBalance,
   hrRecordLeave,
 } from '../lib/api'
+import { broadcastNotification } from '../lib/api.notifications'
+
+vi.mock('../lib/api.notifications', () => ({
+  broadcastNotification: vi.fn(() => Promise.resolve()),
+}))
 
 // Helper to create chainable Supabase mock
 function mockChain(finalResult) {
@@ -82,7 +88,16 @@ describe('applyLeave', () => {
 
   it('inserts a leave request with pending status', async () => {
     const mockLeave = { id: 'leave1', ...leaveData, status: 'pending' }
+    // isUnpaid defaults to false, so applyLeave queries leave_balances before
+    // inserting — this mock must satisfy both the balance-check chain and
+    // the leave_requests insert chain since it's a single universal handler.
     supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'bal-1', total_days: 12, used_days: 0 }, // 12 remaining, request is 3 days
+        error: null,
+      }),
       insert: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
@@ -97,6 +112,12 @@ describe('applyLeave', () => {
 
   it('throws when insertion fails', async () => {
     supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'bal-1', total_days: 12, used_days: 0 }, // sufficient balance so the insert path is reached
+        error: null,
+      }),
       insert: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Insert failed' } }),
@@ -112,6 +133,16 @@ describe('applyLeave', () => {
     let notificationRows
 
     supabase.from.mockImplementation(table => {
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'bal-1', total_days: 12, used_days: 0 }, // sufficient balance
+            error: null,
+          }),
+        }
+      }
       if (table === 'leave_requests') {
         return {
           insert: vi.fn().mockReturnValue({
@@ -139,6 +170,115 @@ describe('applyLeave', () => {
     expect(notificationRows).toHaveLength(2)
     expect(notificationRows.map(r => r.employee_id)).toEqual(['hr-1', 'admin-1'])
     expect(notificationRows[0].type).toBe('leave_request')
+  })
+
+  it('when isUnpaid is true, does NOT block on balance but inserts with unpaid_days = days, paid_days = 0, and increments leave_balances.unpaid_days_taken by days', async () => {
+    const mockLeave = { id: 'leave-unpaid', ...leaveData, status: 'pending' }
+    let insertedRow
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'bal-1', total_days: 12, used_days: 0, unpaid_days_taken: 1 },
+            error: null,
+          }),
+          update: vi.fn().mockImplementation(payload => {
+            balUpdatePayload = payload
+            return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+          }),
+        }
+      }
+      if (table === 'leave_requests') {
+        return {
+          insert: vi.fn().mockImplementation(row => {
+            insertedRow = row
+            return {
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+              }),
+            }
+          }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    supabase.rpc.mockResolvedValueOnce({ data: [], error: null })
+
+    await applyLeave({ ...leaveData, isUnpaid: true })
+
+    expect(insertedRow.unpaid_days).toBe(leaveData.days)
+    expect(insertedRow.paid_days).toBe(0)
+    // Balance IS touched for an unpaid request now — but only to WRITE
+    // (increment unpaid_days_taken), never to read-and-block.
+    expect(supabase.from).toHaveBeenCalledWith('leave_balances')
+    expect(balUpdatePayload.unpaid_days_taken).toBe(1 + leaveData.days)
+  })
+
+  it('when isUnpaid is false and requested days exceed remaining balance, throws and does not insert', async () => {
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'bal-1', total_days: 12, used_days: 10 }, // only 2 days remaining
+            error: null,
+          }),
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    // leaveData.days is 3 (see the shared fixture below) — exceeds the 2 remaining
+    await expect(applyLeave({ ...leaveData, isUnpaid: false })).rejects.toThrow(/2 day.*remaining|remaining.*2 day/i)
+    expect(supabase.from).not.toHaveBeenCalledWith('leave_requests')
+  })
+
+  it('when isUnpaid is false and requested days are within remaining balance, inserts with paid_days = days, unpaid_days = 0', async () => {
+    const mockLeave = { id: 'leave-paid', ...leaveData, status: 'pending' }
+    let insertedRow
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'bal-1', total_days: 12, used_days: 2 }, // 10 remaining, request is 3 days
+            error: null,
+          }),
+        }
+      }
+      if (table === 'leave_requests') {
+        return {
+          insert: vi.fn().mockImplementation(row => {
+            insertedRow = row
+            return {
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+              }),
+            }
+          }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    supabase.rpc.mockResolvedValueOnce({ data: [], error: null })
+
+    await applyLeave({ ...leaveData, isUnpaid: false })
+
+    expect(insertedRow.paid_days).toBe(leaveData.days)
+    expect(insertedRow.unpaid_days).toBe(0)
   })
 })
 
@@ -203,6 +343,248 @@ describe('updateLeaveStatus', () => {
 
     await updateLeaveStatus('leave1', 'rejected', 'hr1')
     expect(supabase.rpc).not.toHaveBeenCalled()
+  })
+
+  it('on approval, still deducts used_days from balance (paid-request path unaffected by removing auto-split)', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-15', days: 1, paid_days: 1, unpaid_days: 0, status: 'approved' }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 2 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
+
+    // used_days should simply be incremented by the request's day-count —
+    // no paid/unpaid split calculation should run here anymore.
+    expect(balUpdatePayload).toEqual({ used_days: 3 })
+  })
+
+  it('on approval of an unpaid request (paid_days: 0), used_days is left unchanged — approval is a genuine no-op on balance', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', paid_days: 0, unpaid_days: 2 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 2 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
+
+    // paid_days is 0 for an all-unpaid request, so used_days must stay
+    // exactly where it started (2), not be incremented by the full
+    // day-count (which would incorrectly deduct unpaid leave from balance).
+    expect(balUpdatePayload).toEqual({ used_days: 2 })
+  })
+
+  it('does not write to leave_requests.paid_days/unpaid_days on approval (that was already decided at apply time)', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-15', days: 1, status: 'approved' }
+    const leaveRequestsUpdateCalls = []
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockImplementation(payload => { leaveRequestsUpdateCalls.push(payload); return {
+            eq: vi.fn().mockReturnThis(),
+            select: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+          }}),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 0 }, error: null }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
+
+    // Only one update call to leave_requests (status/reviewed_by/reviewed_at)
+    // — no second update writing paid_days/unpaid_days.
+    expect(leaveRequestsUpdateCalls).toHaveLength(1)
+    expect(leaveRequestsUpdateCalls[0]).not.toHaveProperty('paid_days')
+    expect(leaveRequestsUpdateCalls[0]).not.toHaveProperty('unpaid_days')
+  })
+
+  it('on approval, broadcasts a company-wide notification with the employee name and dates, no leave type or reason', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved' }
+
+    // Need the employee's name for the broadcast message — updateLeaveStatus
+    // must fetch it via a join (mockLeave doesn't include full_name by default).
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { ...mockLeave, employee: { full_name: 'Jane Doe' } }, error: null }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 0 }, error: null }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
+
+    expect(broadcastNotification).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'leave_approved_team',
+      message: expect.stringContaining('Jane Doe'),
+    }))
+    expect(broadcastNotification).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('2026-07-15'),
+    }))
+    // Must not leak leave type or reason into the broadcast message
+    const call = vi.mocked(broadcastNotification).mock.calls.find(([arg]) => arg.type === 'leave_approved_team')
+    expect(call[0].message).not.toContain('casual_sick')
+  })
+
+  it('on rejection, does not call broadcastNotification', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-15', days: 1, status: 'rejected' }
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateLeaveStatus('leave-1', 'rejected', 'reviewer-1')
+
+    expect(broadcastNotification).not.toHaveBeenCalled()
+  })
+})
+
+// ── cancelLeave ───────────────────────────────────────────────────────────────
+describe('cancelLeave', () => {
+  it('when cancelling an approved leave that had unpaid_days > 0, reverses unpaid_days_taken (not used_days) for that portion', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', unpaid_days: 2, paid_days: 0 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 5, unpaid_days_taken: 2 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await cancelLeave('leave-1', 'emp-1')
+
+    // used_days must be unaffected (this leave never touched it), and
+    // unpaid_days_taken must drop back to 0.
+    expect(balUpdatePayload.used_days).toBe(5)
+    expect(balUpdatePayload.unpaid_days_taken).toBe(0)
+  })
+
+  it('when cancelling an approved leave that had paid_days > 0, reverses used_days as before (unaffected by the unpaid-reversal logic)', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', unpaid_days: 0, paid_days: 2 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 5, unpaid_days_taken: 0 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await cancelLeave('leave-1', 'emp-1')
+
+    expect(balUpdatePayload.used_days).toBe(3) // 5 - 2
+    expect(balUpdatePayload.unpaid_days_taken).toBe(0) // unchanged, was already 0
   })
 })
 

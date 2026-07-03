@@ -388,31 +388,8 @@ it('does not write to leave_requests.paid_days/unpaid_days on approval (that was
 it('on approval, broadcasts a company-wide notification with the employee name and dates, no leave type or reason', async () => {
   const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved' }
 
-  supabase.from.mockImplementation(table => {
-    if (table === 'leave_requests') {
-      return {
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
-      }
-    }
-    if (table === 'leave_balances') {
-      return {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 0 }, error: null }),
-        update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-      }
-    }
-    if (table === 'notifications') {
-      return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
-    }
-    throw new Error(`Unexpected table: ${table}`)
-  })
-
   // Need the employee's name for the broadcast message — updateLeaveStatus
-  // must fetch it (mockLeave doesn't include full_name by default).
+  // must fetch it via a join (mockLeave doesn't include full_name by default).
   supabase.from.mockImplementation(table => {
     if (table === 'leave_requests') {
       return {

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { broadcastNotification } from './api.notifications'
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,68 @@ export async function getAllLeaveRequests() {
   return data
 }
 
-export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false }) {
+// ─── UPCOMING APPROVED LEAVE (company-wide) ────────────────────────────────
+// RPC, not a direct table query — leave_requests' RLS policy only lets a
+// session see its own rows (or hr/admin/manager see all), so a regular
+// employee's session querying this table directly for "everyone's
+// upcoming leave" would be silently filtered to just their own rows. This
+// SECURITY DEFINER RPC (see get_upcoming_approved_leaves in
+// supabase_migration_unpaid_leave.sql) bypasses that for this specific,
+// minimal, company-wide read.
+export async function getUpcomingApprovedLeaves(limit = 10) {
+  const todayStr = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .rpc('get_upcoming_approved_leaves', { as_of_date: todayStr, max_rows: limit })
+  if (error) throw error
+  return data || []
+}
+
+export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false, isUnpaid = false }) {
+  let paidDays = days
+  let unpaidDays = 0
+
+  if (isUnpaid) {
+    paidDays = 0
+    unpaidDays = days
+
+    // Unpaid leave bypasses used_days entirely, but is still tracked
+    // separately via unpaid_days_taken, incremented now (at submission
+    // time) since the paid/unpaid decision is final once the employee
+    // checks this box — nothing left to calculate at approval.
+    const year = new Date(fromDate).getFullYear()
+    const { data: bal } = await supabase
+      .from('leave_balances')
+      .select('id, unpaid_days_taken')
+      .eq('employee_id', employeeId)
+      .eq('leave_type', leaveType)
+      .eq('year', year)
+      .maybeSingle()
+
+    if (bal) {
+      const newUnpaidTaken = Number(bal.unpaid_days_taken || 0) + Number(days)
+      await supabase
+        .from('leave_balances')
+        .update({ unpaid_days_taken: newUnpaidTaken })
+        .eq('id', bal.id)
+    }
+  } else {
+    // Block upfront if the request exceeds remaining balance — no silent
+    // auto-split at approval time. The employee decides now, not HR later.
+    const year = new Date(fromDate).getFullYear()
+    const { data: bal } = await supabase
+      .from('leave_balances')
+      .select('id, total_days, used_days')
+      .eq('employee_id', employeeId)
+      .eq('leave_type', leaveType)
+      .eq('year', year)
+      .maybeSingle()
+
+    const available = bal ? Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0)) : 0
+    if (days > available) {
+      throw new Error(`You only have ${available} day${available !== 1 ? 's' : ''} remaining — reduce the dates or mark this as unpaid leave.`)
+    }
+  }
+
   const { data, error } = await supabase
     .from('leave_requests')
     .insert({
@@ -90,6 +152,8 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
       reason,
       is_half_day: isHalfDay,
       status:      'pending',
+      paid_days:   paidDays,
+      unpaid_days: unpaidDays,
     })
     .select('*')
     .single()
@@ -127,43 +191,48 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
       reviewed_at:  new Date().toISOString(),
     })
     .eq('id', leaveId)
-    .select()
+    .select('*, employee:employee_id(full_name)')
     .single()
   if (error) throw error
 
-  // Update leave balance if approved — handle paid/unpaid split
+  // Update leave balance if approved — the paid/unpaid split was already
+  // decided by the employee at apply time (see applyLeave), so this only
+  // ever adds the full requested day-count to used_days for a paid
+  // request. Unpaid requests never touch leave_balances at all (bypassed
+  // entirely at apply time), so this block only runs for paid approvals.
   if (status === 'approved') {
     const leave = data
     const year = new Date(leave.from_date).getFullYear()
     const { data: bal } = await supabase
       .from('leave_balances')
-      .select('id, used_days, total_days, unpaid_days_taken')
+      .select('id, used_days')
       .eq('employee_id', leave.employee_id)
       .eq('leave_type', leave.leave_type)
       .eq('year', year)
       .maybeSingle()
 
     if (bal) {
-      const available  = Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0))
-      const totalDays  = Number(leave.days)
-      const paidDays   = Math.min(available, totalDays)
-      const unpaidDays = Math.max(0, totalDays - paidDays)
-      const newUsed    = Number(bal.used_days || 0) + paidDays
-      const newUnpaid  = Number(bal.unpaid_days_taken || 0) + unpaidDays
-
-      // Update balance
+      // Use paid_days, not the full day-count — an unpaid request has
+      // paid_days === 0, so approving it must be a genuine no-op on
+      // used_days (symmetric with cancelLeave's reversal, which already
+      // reverses by paid_days, not days).
+      const newUsed = Number(bal.used_days || 0) + Number(leave.paid_days || 0)
       const { error: balErr } = await supabase
         .from('leave_balances')
-        .update({ used_days: newUsed, unpaid_days_taken: newUnpaid })
+        .update({ used_days: newUsed })
         .eq('id', bal.id)
       if (balErr) console.error('Balance update error:', balErr.message)
-
-      // Record paid/unpaid split on the leave request
-      await supabase
-        .from('leave_requests')
-        .update({ paid_days: paidDays, unpaid_days: unpaidDays })
-        .eq('id', leaveId)
     }
+
+    // Team-wide visibility — name + dates only, no leave type or reason.
+    try {
+      await broadcastNotification({
+        type: 'leave_approved_team',
+        title: '🏖️ Team Leave',
+        message: `${data.employee?.full_name || 'An employee'} is on leave ${leave.from_date}${leave.from_date !== leave.to_date ? ` – ${leave.to_date}` : ''}.`,
+        metadata: { leave_id: leaveId },
+      })
+    } catch (e) { console.warn('Leave approval broadcast failed:', e.message) }
   }
 
   // Notify employee of decision
@@ -191,19 +260,23 @@ export async function cancelLeave(leaveId, employeeId) {
     .single()
   if (fetchErr) throw fetchErr
 
-  // Restore balance if leave was approved
+  // Restore balance if leave was approved. paid_days reverses used_days
+  // (as before); unpaid_days reverses unpaid_days_taken instead — these
+  // were split at apply time (see applyLeave), never both nonzero for the
+  // same request.
   if (leave.status === 'approved') {
     const year = new Date(leave.from_date).getFullYear()
     const { data: bal } = await supabase
       .from('leave_balances')
-      .select('id, used_days')
+      .select('id, used_days, unpaid_days_taken')
       .eq('employee_id', leave.employee_id)
       .eq('leave_type', leave.leave_type)
       .eq('year', year)
       .maybeSingle()
     if (bal) {
-      const restored = Math.max(0, (bal.used_days || 0) - Number(leave.days))
-      await supabase.from('leave_balances').update({ used_days: restored }).eq('id', bal.id)
+      const restoredUsed   = Math.max(0, (bal.used_days || 0) - Number(leave.paid_days || 0))
+      const restoredUnpaid = Math.max(0, (bal.unpaid_days_taken || 0) - Number(leave.unpaid_days || 0))
+      await supabase.from('leave_balances').update({ used_days: restoredUsed, unpaid_days_taken: restoredUnpaid }).eq('id', bal.id)
     }
   }
 
