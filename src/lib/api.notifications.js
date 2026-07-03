@@ -411,6 +411,9 @@ export async function runDailyChecks(reviewerEmployeeId) {
       // needed. Without this, two HR/Admin sessions loading TopBar on the same
       // day (e.g. two staff, or one staff with two tabs) would each pass the
       // sessionStorage gate independently and double-broadcast to everyone.
+      // This dedup gate stays here (rather than inside broadcastNotification)
+      // since "don't call it twice today" is specific to this scheduled check,
+      // not something the generic helper should know about.
       const { count: alreadyBroadcastToday } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
@@ -418,24 +421,27 @@ export async function runDailyChecks(reviewerEmployeeId) {
         .gte('created_at', todayStr)
 
       if (alreadyBroadcastToday === 0) {
-        await supabase.from('notifications').insert(
-          (activeEmployeesForOptin || []).map(emp => ({
-            employee_id: emp.id,
-            type: 'holiday_optin_window_open',
-            title: 'Holiday Opt-In Window Open',
-            message: `You can now pick your optional holidays. Submit by ${optinWindow.closesOn}.`,
-            metadata: { window: optinWindow.label },
-            is_read: false,
-          }))
-        )
+        // Reuse the existing broadcastNotification helper (fetch active
+        // employees -> bulk insert one row each, no .select() chained) rather
+        // than re-implementing the same fetch/map/insert here.
+        await broadcastNotification({
+          type: 'holiday_optin_window_open',
+          title: 'Holiday Opt-In Window Open',
+          message: `You can now pick your optional holidays. Submit by ${optinWindow.closesOn}.`,
+          metadata: { window: optinWindow.label },
+        })
       }
     }
 
     // Closing-soon reminder: last 4 days of the window, only to employees
     // who have not yet confirmed their picks (even confirming zero counts
     // as responded — don't nag people who already answered).
+    // Anchor "today" to midnight UTC for this calculation too, so the day
+    // count is a pure date difference (both operands at midnight UTC) rather
+    // than depending on the wall-clock time runDailyChecks happens to run at.
     const closesOnDate = new Date(`${optinWindow.closesOn}T00:00:00.000Z`)
-    const daysUntilClose = Math.round((closesOnDate - today) / 86400000)
+    const todayMidnightUTC = new Date(`${todayStr}T00:00:00.000Z`)
+    const daysUntilClose = Math.round((closesOnDate - todayMidnightUTC) / 86400000)
     if (daysUntilClose >= 0 && daysUntilClose <= 3) {
       const { data: submitted } = await supabase
         .from('holiday_optin_submissions')
