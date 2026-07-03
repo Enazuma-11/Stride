@@ -78,7 +78,31 @@ export async function getAllLeaveRequests() {
   return data
 }
 
-export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false }) {
+export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false, isUnpaid = false }) {
+  let paidDays = days
+  let unpaidDays = 0
+
+  if (isUnpaid) {
+    paidDays = 0
+    unpaidDays = days
+  } else {
+    // Block upfront if the request exceeds remaining balance — no silent
+    // auto-split at approval time. The employee decides now, not HR later.
+    const year = new Date(fromDate).getFullYear()
+    const { data: bal } = await supabase
+      .from('leave_balances')
+      .select('id, total_days, used_days')
+      .eq('employee_id', employeeId)
+      .eq('leave_type', leaveType)
+      .eq('year', year)
+      .maybeSingle()
+
+    const available = bal ? Math.max(0, Number(bal.total_days) - Number(bal.used_days || 0)) : 0
+    if (days > available) {
+      throw new Error(`You only have ${available} day${available !== 1 ? 's' : ''} remaining — reduce the dates or mark this as unpaid leave.`)
+    }
+  }
+
   const { data, error } = await supabase
     .from('leave_requests')
     .insert({
@@ -90,6 +114,8 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
       reason,
       is_half_day: isHalfDay,
       status:      'pending',
+      paid_days:   paidDays,
+      unpaid_days: unpaidDays,
     })
     .select('*')
     .single()
