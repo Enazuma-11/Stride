@@ -71,7 +71,8 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
       : 0
 
   async function submit() {
-    if (!form.fromDate || !form.reason.trim()) { setError('Date and reason are required.'); return }
+    if (!form.fromDate)          { setError('Please select a date.'); return }
+    if (!form.reason.trim())     { setError('Please enter a reason for your leave.'); return }
     if (!form.isHalfDay && !form.toDate)       { setError('End date is required.'); return }
     if (!form.isHalfDay && new Date(form.toDate) < new Date(form.fromDate)) { setError('End date must be after start date.'); return }
     setLoad(true); setError('')
@@ -130,9 +131,6 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
         Apply for Leave
       </div>
 
-      {success && <div style={{ marginBottom: 14 }}><Alert type="success" message="Leave application submitted! HR will review it shortly." /></div>}
-      {error   && <div style={{ marginBottom: 14 }}><Alert type="error"   message={error} /></div>}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Select label="Leave Type" value={form.leaveType} onChange={set('leaveType')}
           options={applicable.map(lt => ({ value: lt.id, label: lt.label }))} required />
@@ -178,6 +176,11 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
 
         {/* Unpaid leave warning - plain variables, no IIFE */}
         {unpaidWarning}
+
+        {/* Rendered right above the button (not at the top of the form) so it's
+            visible without scrolling back up when the user clicks submit */}
+        {success && <Alert type="success" message="Leave application submitted! HR will review it shortly." />}
+        {error   && <Alert type="error"   message={error} />}
 
         <button onClick={submit} disabled={loading || days === 0}
           style={{ padding: '12px 24px', borderRadius: 10, border: 'none', background: loading || days === 0 ? C.border : C.brand, color: loading || days === 0 ? C.textLight : '#fff', fontSize: 13, fontWeight: 700, cursor: loading || days === 0 ? 'not-allowed' : 'pointer', fontFamily: FONTS.display }}>
