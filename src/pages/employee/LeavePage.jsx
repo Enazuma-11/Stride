@@ -55,7 +55,7 @@ function BalanceStrip({ balances, gender }) {
 function ApplyForm({ employeeId, gender, balances, onApplied }) {
   const r          = useResponsive()
   const applicable = getApplicableLeaveTypes(gender)
-  const [form, setForm]       = useState({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '', isHalfDay: false })
+  const [form, setForm]       = useState({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '', isHalfDay: false, isUnpaid: false })
   const [loading, setLoad]    = useState(false)
   const [error,   setError]   = useState('')
   const [success, setSuccess] = useState(false)
@@ -84,21 +84,33 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
         days,
         reason:     form.isHalfDay ? `${form.reason} (Half Day)` : form.reason,
         isHalfDay:  form.isHalfDay,
+        isUnpaid:   form.isUnpaid,
       })
       onApplied(newLeave)
       setSuccess(true)
-      setForm({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '', isHalfDay: false })
+      setForm({ leaveType: 'casual_sick', fromDate: '', toDate: '', reason: '', isHalfDay: false, isUnpaid: false })
       setTimeout(() => setSuccess(false), 3000)
     } catch (e) { setError(e.message) }
     finally { setLoad(false) }
   }
 
-  // Pre-compute unpaid warning to avoid IIFE crash in JSX
+  // Pre-compute unpaid/balance messaging to avoid IIFE crash in JSX
   const _selBal     = balances.find(b => b.leave_type === form.leaveType)
   const _available  = _selBal ? Math.max(0, Number(_selBal.total_days) - Number(_selBal.used_days || 0)) : 0
-  const _unpaid     = days > 0 ? Math.max(0, days - _available) : 0
   const _ltLabel    = LEAVE_TYPES.find(lt => lt.id === form.leaveType)?.label || ''
-  const unpaidWarning = (days > 0 && _unpaid > 0) ? (
+  const unpaidWarning = form.isUnpaid ? (
+    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>ℹ️</span>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af', marginBottom: 2 }}>
+          Unpaid leave
+        </div>
+        <div style={{ fontSize: 12, color: '#1e40af' }}>
+          This leave will not be deducted from your balance.
+        </div>
+      </div>
+    </div>
+  ) : (days > 0 && days > _available) ? (
     <div style={{ background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
       <div>
@@ -106,8 +118,7 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
           Insufficient {_ltLabel} balance
         </div>
         <div style={{ fontSize: 12, color: '#92400e' }}>
-          You have <strong>{_available} day{_available !== 1 ? 's' : ''}</strong> remaining.
-          {' '}<strong>{_unpaid} day{_unpaid !== 1 ? 's' : ''}</strong> will be treated as <strong>unpaid leave (LOP)</strong> and may affect your salary.
+          You only have <strong>{_available} day{_available !== 1 ? 's' : ''}</strong> remaining — this request will be <strong>blocked</strong> unless you reduce the dates or mark it as unpaid leave.
         </div>
       </div>
     </div>
@@ -141,6 +152,18 @@ function ApplyForm({ employeeId, gender, balances, onApplied }) {
               {days} day{days !== 1 ? 's' : ''}
             </div>
           )}
+        </div>
+
+        {/* Unpaid leave toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: form.isUnpaid ? `${C.teal}12` : C.bg, borderRadius: 10, border: `1.5px solid ${form.isUnpaid ? C.teal : C.border}`, cursor: 'pointer', transition: 'all 0.15s' }}
+          onClick={() => setForm(f => ({ ...f, isUnpaid: !f.isUnpaid }))}>
+          <div style={{ width: 36, height: 20, borderRadius: 10, background: form.isUnpaid ? C.teal : C.border, position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+            <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: form.isUnpaid ? 18 : 2, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: form.isUnpaid ? C.teal : C.text }}>Take this as unpaid leave</div>
+            <div style={{ fontSize: 11, color: C.textLight }}>Won't count against your leave balance.</div>
+          </div>
         </div>
 
         {/* Single calendar date range picker */}
