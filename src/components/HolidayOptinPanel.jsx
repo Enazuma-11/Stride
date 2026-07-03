@@ -7,7 +7,7 @@ import {
   saveMyHolidayOptins, getHolidayOptinRoster, hasSubmittedForWindow,
 } from '../lib/api.holidayOptins'
 
-function RosterRow({ holidayId, expanded, onToggle }) {
+function RosterRow({ holidayId, expanded }) {
   const [roster, setRoster] = useState(null)
 
   useEffect(() => {
@@ -149,7 +149,7 @@ export default function HolidayOptinPanel({ employeeId }) {
                     {expandedId === h.id ? 'Hide' : 'Who else?'}
                   </button>
                 </div>
-                <RosterRow holidayId={h.id} expanded={expandedId === h.id} onToggle={() => {}} />
+                <RosterRow holidayId={h.id} expanded={expandedId === h.id} />
               </div>
             )
           })}

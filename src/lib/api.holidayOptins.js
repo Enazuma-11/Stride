@@ -9,8 +9,6 @@ export function getOptinWindow(now = new Date()) {
   const day   = now.getUTCDate()
   const month = now.getUTCMonth() + 1 // 1-indexed
 
-  const pad = n => String(n).padStart(2, '0')
-
   if (month === 1 && day >= 1 && day <= 14) {
     return {
       isOpen: true,
