@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-02
+**Last updated:** 2026-07-03
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,28 +19,31 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`865d1c1` — Add design spec for holiday opt-in calendar
+`68c9de3` — Reuse broadcastNotification for window-open block; anchor daysUntilClose to midnight UTC
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
 
 ## IN PROGRESS
 
-### 🔵 Holiday Opt-In Calendar (design approved, implementation plan next)
+### 🔵 Leave Overhaul (not yet designed)
+Employee-chosen paid/unpaid leave, plus "notify team when a regular leave request is approved" (deferred out of the Holiday design below). To be designed next.
+
+## RECENTLY COMPLETED
+
+### Holiday Opt-In Calendar (2026-07-03)
+Built via 7-task plan (subagent-driven-development) + a final whole-branch review round.
 Spec: `docs/superpowers/specs/2026-07-02-holiday-optin-design.md`
+Plan: `docs/superpowers/plans/2026-07-02-holiday-optin-calendar.md`
 - Per-employee opt-in for `type='optional'` holidays only — `public`/`company` stay mandatory for everyone, unchanged
 - Two fixed annual windows: Jan 1–14 (picks for the whole year), Jul 1–14 (revise Jul–Dec picks only; Jan–Jun locked)
 - No cap on selections; silence = opted out of everything that window
-- Shared visibility — any employee (not just HR) can see who opted into a given holiday
-- Window-open + not-yet-responded reminder notifications, reusing the existing `runDailyChecks` pattern
-- New tables: `holiday_optins`, `holiday_optin_submissions`
-- Explicitly designed to avoid the Attendance Overhaul's post-launch bug classes (RLS cross-employee access, notification broadcast completeness, date-boundary math) — see spec's Testing Plan section
-- **Next step:** writing-plans skill → implementation plan, not yet executed
-
-### 🔵 Leave Overhaul (not yet designed)
-Employee-chosen paid/unpaid leave, plus "notify team when a regular leave request is approved" (deferred out of the Holiday design above). To be designed after the Holiday Opt-In Calendar ships.
-
-## RECENTLY COMPLETED
+- Shared visibility — any employee (not just HR) can see who opted into a given holiday, on the new "Holiday Calendar" tab (Leave Management page)
+- Window-open + not-yet-responded reminder notifications, via `runDailyChecks`, deduped so a window-open broadcast can't double-fire across multiple HR sessions
+- New tables: `holiday_optins`, `holiday_optin_submissions` (migration: `supabase_migration_holiday_optins.sql` — ⚠️ **must be run manually in both Supabase projects**, not yet applied as of this writing)
+- Explicitly designed to avoid the Attendance Overhaul's bug classes (RLS cross-employee access, notification broadcast completeness, date-boundary math) — all held up end-to-end per the final review
+- Final whole-branch review caught one real Critical bug the per-task reviews couldn't see (re-saving picks would throw a unique-constraint error on nearly every real re-save) — fixed and re-verified before merge
+- 209 tests passing (up from 185 at the start of this feature)
 
 ### Attendance Overhaul (2026-07-02)
 Built via 17-task plan (subagent-driven-development) + a final whole-branch review round.
@@ -225,6 +228,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
 | 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
 | 🔴 HIGH | SQL: supabase_migration_notifications_insert_fix.sql | Run in both Supabase — re-applies the notifications_insert RLS policy (a manager-less employee's first regularization submission hit "row violates row-level security policy" on this table) |
+| 🔴 HIGH | SQL: supabase_migration_holiday_optins.sql | Run in both Supabase — required for the new Holiday Opt-In Calendar (employees can't pick optional holidays until this runs) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
@@ -259,6 +263,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_education_docs.sql | ✅ |
 | supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
 | supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
+| supabase_migration_holiday_optins.sql | ⚠️ PENDING |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
 
@@ -275,6 +280,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_education_docs.sql | ✅ |
 | supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
 | supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
+| supabase_migration_holiday_optins.sql | ⚠️ PENDING |
 
 ---
 
