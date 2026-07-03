@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-03 (Leave Overhaul merged)
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,17 +19,28 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`68c9de3` — Reuse broadcastNotification for window-open block; anchor daysUntilClose to midnight UTC
+`2e93dc7` — Merge worktree-leave-overhaul into main (Leave Overhaul feature)
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
 
 ## IN PROGRESS
-
-### 🔵 Leave Overhaul (not yet designed)
-Employee-chosen paid/unpaid leave, plus "notify team when a regular leave request is approved" (deferred out of the Holiday design below). To be designed next.
+- (nothing in progress)
 
 ## RECENTLY COMPLETED
+
+### Leave Overhaul (2026-07-03)
+Built via 7-task plan (subagent-driven-development) + a final whole-branch review round.
+Spec: `docs/superpowers/specs/2026-07-03-leave-overhaul-design.md`
+Plan: `docs/superpowers/plans/2026-07-03-leave-overhaul.md`
+- Employee chooses "unpaid leave" upfront at apply time (checkbox) — bypasses the balance system entirely, tracked separately via `leave_balances.unpaid_days_taken`. Replaces the old dormant auto paid/unpaid split that used to run at approval time (removed).
+- Requests exceeding remaining paid balance are now blocked upfront at apply time, with a message telling the employee to reduce the dates or mark it unpaid — no more silent split.
+- Team-wide visibility on approval: every active employee gets an in-app notification (name + dates only, via `broadcastNotification`), plus a persistent "Upcoming Leave" list widget on the Dashboard (both Employee and Admin views)
+- New `get_upcoming_approved_leaves` SECURITY DEFINER RPC (added to `supabase_migration_unpaid_leave.sql`) — required because `leave_requests`' RLS policy only lets a session see its own rows, so a direct query for "everyone's upcoming leave" would silently return just the querying employee's own rows
+- Final whole-branch review caught 2 Critical cross-task bugs the per-task reviews missed: `unpaid_days_taken` was never actually incremented anywhere, and `updateLeaveStatus` was deducting the full day-count (not just `paid_days`) from balance on approval, corrupting balances for approved unpaid requests — both fixed and re-verified (numeric round-trip trace: apply → approve → cancel) before merge
+- Known minor follow-up (not merge-blocking): cancelling a still-*pending* (never approved) unpaid request doesn't reverse `unpaid_days_taken`
+- 219 tests passing (up from 209 at the start of this feature)
+- ⚠️ `supabase_migration_unpaid_leave.sql` still needs to be run manually in both Supabase projects — see Pending Actions below (now also adds the RPC, not just the two balance columns)
 
 ### Holiday Opt-In Calendar (2026-07-03)
 Built via 7-task plan (subagent-driven-development) + a final whole-branch review round.
@@ -223,7 +234,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | Priority | Item | Action |
 |---|---|---|
 | 🔴 HIGH | SQL: lr_delete_own policy | Run in both Supabase: `CREATE POLICY "lr_delete_own" ON leave_requests FOR DELETE TO authenticated USING (employee_id = (SELECT id FROM employees WHERE user_id = auth.uid()));` |
-| 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns |
+| 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns, and get_upcoming_approved_leaves RPC (required for the Dashboard "Upcoming Leave" widget) |
 | 🔴 HIGH | SQL: supabase_migration_attendance_sessions.sql | Run in both Supabase — required for the new Attendance overhaul (multi-session check-in/out won't work until this runs) |
 | 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
 | 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
