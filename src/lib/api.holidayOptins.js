@@ -62,14 +62,20 @@ export async function getMyHolidayOptins(employeeId, year) {
 
 // ─── SAVE MY OPT-INS (replace-entirely for the editable set) ───────────────
 export async function saveMyHolidayOptins(employeeId, editableHolidayIds, selectedHolidayIds) {
-  const selectedSet = new Set(selectedHolidayIds)
-  const toDelete = editableHolidayIds.filter(id => !selectedSet.has(id))
-
-  if (toDelete.length > 0) {
+  // Delete the FULL editable set unconditionally (not just the deselected
+  // subset) before inserting. holiday_optins has UNIQUE(employee_id,
+  // holiday_id), and the insert below is a plain (non-upsert) insert of the
+  // full selectedHolidayIds set — including holidays the employee already
+  // opted into in a prior save. If a still-selected holiday's row weren't
+  // deleted first, re-inserting it would hit the unique constraint and throw.
+  // Deleting the entire editable set guarantees no pre-existing row survives
+  // to collide with the insert, matching the "replace entirely" pattern
+  // already used by hrSetSessions in api.attendance.js.
+  if (editableHolidayIds.length > 0) {
     await supabase
       .from('holiday_optins')
       .delete()
-      .in('holiday_id', toDelete)
+      .in('holiday_id', editableHolidayIds)
       .eq('employee_id', employeeId)
   }
 

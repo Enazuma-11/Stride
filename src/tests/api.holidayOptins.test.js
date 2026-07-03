@@ -118,6 +118,58 @@ describe('getMyHolidayOptins', () => {
 })
 
 describe('saveMyHolidayOptins', () => {
+  // Regression test for the "re-save throws on unique-constraint violation" bug:
+  // when an employee re-saves and keeps a previously-opted-in holiday selected,
+  // that holiday's `holiday_optins` row already exists in the DB. The old
+  // implementation only deleted the DESELECTED subset of editableHolidayIds,
+  // so the still-selected holiday's existing row was never deleted before the
+  // plain `.insert()` tried to re-insert it — violating the
+  // UNIQUE(employee_id, holiday_id) constraint. The fix must delete the FULL
+  // editable set unconditionally before inserting, so no pre-existing row can
+  // collide with the insert. This test proves the delete call covers the
+  // entire editable set (including still-selected holidays), which is what
+  // makes the subsequent insert collision-free.
+  it('deletes the full editable set (including still-selected holidays) before inserting, so a re-save does not collide with existing rows', async () => {
+    const editableHolidayIds = ['h1', 'h2', 'h3']
+    // h1 was already opted into in a prior save and stays selected here —
+    // this is the exact "re-save" scenario that used to throw.
+    const selectedHolidayIds = ['h1', 'h3']
+    let deletedIds, insertedRows
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'holiday_optins') {
+        return {
+          delete: vi.fn().mockReturnThis(),
+          in: vi.fn().mockImplementation((col, ids) => {
+            deletedIds = ids
+            return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+          }),
+          insert: vi.fn().mockImplementation(rows => {
+            insertedRows = rows
+            return Promise.resolve({ data: null, error: null })
+          }),
+        }
+      }
+      if (table === 'holiday_optin_submissions') {
+        return { upsert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await saveMyHolidayOptins('emp-1', editableHolidayIds, selectedHolidayIds)
+
+    // The delete must cover the FULL editable set (h1, h2, h3), not just the
+    // deselected h2 — otherwise h1's pre-existing row survives to collide
+    // with the insert below.
+    expect(deletedIds).toEqual(editableHolidayIds)
+    // The still-selected h1 must be included in the insert (proving no
+    // crash/skip happens for a holiday that was already opted into).
+    expect(insertedRows).toEqual([
+      { employee_id: 'emp-1', holiday_id: 'h1' },
+      { employee_id: 'emp-1', holiday_id: 'h3' },
+    ])
+  })
+
   it('deletes opt-ins for editable holidays not selected, inserts newly selected ones, and records the submission', async () => {
     const editableHolidayIds = ['h1', 'h2', 'h3']
     const selectedHolidayIds = ['h1', 'h3']
@@ -150,8 +202,9 @@ describe('saveMyHolidayOptins', () => {
 
     await saveMyHolidayOptins('emp-1', editableHolidayIds, selectedHolidayIds)
 
-    // h2 was editable but not selected -> deleted; h1, h3 were selected -> not deleted
-    expect(deletedIds).toEqual(['h2'])
+    // The full editable set is now deleted unconditionally (delete-then-insert
+    // replace-entirely pattern), not just the deselected subset.
+    expect(deletedIds).toEqual(editableHolidayIds)
     expect(insertedRows).toEqual([
       { employee_id: 'emp-1', holiday_id: 'h1' },
       { employee_id: 'emp-1', holiday_id: 'h3' },
