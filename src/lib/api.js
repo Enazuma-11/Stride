@@ -102,6 +102,27 @@ export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days
   if (isUnpaid) {
     paidDays = 0
     unpaidDays = days
+
+    // Unpaid leave bypasses used_days entirely, but is still tracked
+    // separately via unpaid_days_taken, incremented now (at submission
+    // time) since the paid/unpaid decision is final once the employee
+    // checks this box — nothing left to calculate at approval.
+    const year = new Date(fromDate).getFullYear()
+    const { data: bal } = await supabase
+      .from('leave_balances')
+      .select('id, unpaid_days_taken')
+      .eq('employee_id', employeeId)
+      .eq('leave_type', leaveType)
+      .eq('year', year)
+      .maybeSingle()
+
+    if (bal) {
+      const newUnpaidTaken = Number(bal.unpaid_days_taken || 0) + Number(days)
+      await supabase
+        .from('leave_balances')
+        .update({ unpaid_days_taken: newUnpaidTaken })
+        .eq('id', bal.id)
+    }
   } else {
     // Block upfront if the request exceeds remaining balance — no silent
     // auto-split at approval time. The employee decides now, not HR later.

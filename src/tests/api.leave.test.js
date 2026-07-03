@@ -172,11 +172,26 @@ describe('applyLeave', () => {
     expect(notificationRows[0].type).toBe('leave_request')
   })
 
-  it('when isUnpaid is true, does NOT check balance and inserts with unpaid_days = days, paid_days = 0', async () => {
+  it('when isUnpaid is true, does NOT block on balance but inserts with unpaid_days = days, paid_days = 0, and increments leave_balances.unpaid_days_taken by days', async () => {
     const mockLeave = { id: 'leave-unpaid', ...leaveData, status: 'pending' }
     let insertedRow
+    let balUpdatePayload
 
     supabase.from.mockImplementation(table => {
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'bal-1', total_days: 12, used_days: 0, unpaid_days_taken: 1 },
+            error: null,
+          }),
+          update: vi.fn().mockImplementation(payload => {
+            balUpdatePayload = payload
+            return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) }
+          }),
+        }
+      }
       if (table === 'leave_requests') {
         return {
           insert: vi.fn().mockImplementation(row => {
@@ -200,8 +215,10 @@ describe('applyLeave', () => {
 
     expect(insertedRow.unpaid_days).toBe(leaveData.days)
     expect(insertedRow.paid_days).toBe(0)
-    // Balance must never be queried for an unpaid request
-    expect(supabase.from).not.toHaveBeenCalledWith('leave_balances')
+    // Balance IS touched for an unpaid request now — but only to WRITE
+    // (increment unpaid_days_taken), never to read-and-block.
+    expect(supabase.from).toHaveBeenCalledWith('leave_balances')
+    expect(balUpdatePayload.unpaid_days_taken).toBe(1 + leaveData.days)
   })
 
   it('when isUnpaid is false and requested days exceed remaining balance, throws and does not insert', async () => {
