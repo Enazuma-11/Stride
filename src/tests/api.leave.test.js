@@ -5,6 +5,7 @@ import {
   getMyLeaveRequests,
   applyLeave,
   updateLeaveStatus,
+  cancelLeave,
   hrAdjustLeave,
   hrSetLeaveBalance,
   hrRecordLeave,
@@ -461,6 +462,77 @@ describe('updateLeaveStatus', () => {
     await updateLeaveStatus('leave-1', 'rejected', 'reviewer-1')
 
     expect(broadcastNotification).not.toHaveBeenCalled()
+  })
+})
+
+// ── cancelLeave ───────────────────────────────────────────────────────────────
+describe('cancelLeave', () => {
+  it('when cancelling an approved leave that had unpaid_days > 0, reverses unpaid_days_taken (not used_days) for that portion', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', unpaid_days: 2, paid_days: 0 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 5, unpaid_days_taken: 2 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await cancelLeave('leave-1', 'emp-1')
+
+    // used_days must be unaffected (this leave never touched it), and
+    // unpaid_days_taken must drop back to 0.
+    expect(balUpdatePayload.used_days).toBe(5)
+    expect(balUpdatePayload.unpaid_days_taken).toBe(0)
+  })
+
+  it('when cancelling an approved leave that had paid_days > 0, reverses used_days as before (unaffected by the unpaid-reversal logic)', async () => {
+    const mockLeave = { id: 'leave-1', employee_id: 'emp-1', leave_type: 'casual_sick', from_date: '2026-07-15', to_date: '2026-07-16', days: 2, status: 'approved', unpaid_days: 0, paid_days: 2 }
+    let balUpdatePayload
+
+    supabase.from.mockImplementation(table => {
+      if (table === 'leave_requests') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockLeave, error: null }),
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        }
+      }
+      if (table === 'leave_balances') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'bal-1', used_days: 5, unpaid_days_taken: 0 }, error: null }),
+          update: vi.fn().mockImplementation(payload => { balUpdatePayload = payload; return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) } }),
+        }
+      }
+      if (table === 'notifications') {
+        return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await cancelLeave('leave-1', 'emp-1')
+
+    expect(balUpdatePayload.used_days).toBe(3) // 5 - 2
+    expect(balUpdatePayload.unpaid_days_taken).toBe(0) // unchanged, was already 0
   })
 })
 

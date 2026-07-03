@@ -219,19 +219,23 @@ export async function cancelLeave(leaveId, employeeId) {
     .single()
   if (fetchErr) throw fetchErr
 
-  // Restore balance if leave was approved
+  // Restore balance if leave was approved. paid_days reverses used_days
+  // (as before); unpaid_days reverses unpaid_days_taken instead — these
+  // were split at apply time (see applyLeave), never both nonzero for the
+  // same request.
   if (leave.status === 'approved') {
     const year = new Date(leave.from_date).getFullYear()
     const { data: bal } = await supabase
       .from('leave_balances')
-      .select('id, used_days')
+      .select('id, used_days, unpaid_days_taken')
       .eq('employee_id', leave.employee_id)
       .eq('leave_type', leave.leave_type)
       .eq('year', year)
       .maybeSingle()
     if (bal) {
-      const restored = Math.max(0, (bal.used_days || 0) - Number(leave.days))
-      await supabase.from('leave_balances').update({ used_days: restored }).eq('id', bal.id)
+      const restoredUsed   = Math.max(0, (bal.used_days || 0) - Number(leave.paid_days || 0))
+      const restoredUnpaid = Math.max(0, (bal.unpaid_days_taken || 0) - Number(leave.unpaid_days || 0))
+      await supabase.from('leave_balances').update({ used_days: restoredUsed, unpaid_days_taken: restoredUnpaid }).eq('id', bal.id)
     }
   }
 
