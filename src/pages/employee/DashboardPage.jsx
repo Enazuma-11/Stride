@@ -8,7 +8,7 @@ import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getAllEmploye
 import OnboardingWizard from '../../components/OnboardingWizard'
 import { useResponsive, cols } from '../../lib/responsive'
 import { getTodayAttendance, getTeamAttendanceByDate, getHolidays, todayISO, getWeeklyHours, getWeekStart } from '../../lib/api.attendance'
-import { getAllLeaveRequests } from '../../lib/api'
+import { getAllLeaveRequests, getUpcomingApprovedLeaves } from '../../lib/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getTimeOfDay() {
@@ -61,6 +61,29 @@ function WeeklyHoursCard({ weekly }) {
   )
 }
 
+// ── Upcoming leave (company-wide) mini card ───────────────────────────────────
+function UpcomingLeaveCard({ leaves }) {
+  if (!leaves || leaves.length === 0) return null
+  return (
+    <Card style={{ padding: '16px 18px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 10 }}>🏖️ Upcoming Leave</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {leaves.map(l => (
+          <div key={`${l.employee_id}-${l.from_date}`} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Avatar initials={l.avatar_initials || '??'} size={26} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{l.full_name}</div>
+              <div style={{ fontSize: 10, color: C.textLight }}>
+                {l.from_date}{l.from_date !== l.to_date ? ` – ${l.to_date}` : ''}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
 // ── Attendance status badge ───────────────────────────────────────────────────
 function AttendBadge({ status }) {
   const s = ATTENDANCE_STATUSES.find(a => a.value === status) || { icon: '❓', color: C.textLight, bg: C.surfaceAlt, label: 'Unknown' }
@@ -72,7 +95,7 @@ function AttendBadge({ status }) {
 }
 
 // ── EMPLOYEE DASHBOARD ────────────────────────────────────────────────────────
-function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays, weekly, setShowWizard }) {
+function EmployeeDashboard({ employee, balances, requests, announcements, todayAtt, holidays, weekly, upcomingLeaves, setShowWizard }) {
   const navigate = useNavigate()
   const r = useResponsive()
   const pending  = requests.filter(r => r.status === 'pending').length
@@ -98,6 +121,9 @@ function EmployeeDashboard({ employee, balances, requests, announcements, todayA
 
       {/* Weekly hours */}
       <WeeklyHoursCard weekly={weekly} />
+
+      {/* Upcoming leave (company-wide) */}
+      <UpcomingLeaveCard leaves={upcomingLeaves} />
 
       {/* Leave balances */}
       <div>
@@ -186,7 +212,7 @@ function EmployeeDashboard({ employee, balances, requests, announcements, todayA
 }
 
 // ── ADMIN/HR DASHBOARD ────────────────────────────────────────────────────────
-function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announcements, holidays, balances, myRequests }) {
+function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announcements, holidays, balances, myRequests, upcomingLeaves }) {
   const navigate  = useNavigate()
   const r = useResponsive()
   const today     = new Date()
@@ -454,6 +480,9 @@ function AdminDashboard({ employee, employees, teamAttendance, allLeaves, announ
           </div>
         </div>
       </div>
+
+      {/* ── Row 5: Upcoming leave (company-wide) ── */}
+      <UpcomingLeaveCard leaves={upcomingLeaves} />
     </div>
   )
 }
@@ -472,6 +501,7 @@ export default function DashboardPage() {
   const [holidays,       setHolidays]       = useState([])
   const [loading,        setLoading]        = useState(true)
   const [showWizard,     setShowWizard]     = useState(false)
+  const [upcomingLeaves, setUpcomingLeaves] = useState([])
 
   useEffect(() => {
     if (!employee) return
@@ -484,6 +514,7 @@ export default function DashboardPage() {
       getTodayAttendance(employee.id),
       getHolidays(year),
       getWeeklyHours(employee.id, getWeekStart(todayISO())),
+      getUpcomingApprovedLeaves(),
     ]
 
     const adminLoads = isHR ? [
@@ -502,9 +533,10 @@ export default function DashboardPage() {
     }
 
     Promise.all([...baseLoads, ...adminLoads])
-      .then(([b, r, a, att, hols, weeklyHours, emps, teamAtt, leaves]) => {
+      .then(([b, r, a, att, hols, weeklyHours, upcoming, emps, teamAtt, leaves]) => {
         setBalances(b); setMyRequests(r); setAnnouncements(a)
         setTodayAtt(att); setHolidays(hols); setWeekly(weeklyHours)
+        setUpcomingLeaves(upcoming)
         if (isHR) { setEmployees(emps); setTeamAttendance(teamAtt); setAllLeaves(leaves) }
       })
       .finally(() => setLoading(false))
@@ -534,6 +566,7 @@ export default function DashboardPage() {
             holidays={holidays}
             balances={balances}
             myRequests={myRequests}
+            upcomingLeaves={upcomingLeaves}
           />
         : <EmployeeDashboard
             employee={employee}
@@ -543,6 +576,7 @@ export default function DashboardPage() {
             todayAtt={todayAtt}
             holidays={holidays}
             weekly={weekly}
+            upcomingLeaves={upcomingLeaves}
             setShowWizard={setShowWizard}
           />
       }

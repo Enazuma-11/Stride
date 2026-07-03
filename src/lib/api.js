@@ -79,6 +79,22 @@ export async function getAllLeaveRequests() {
   return data
 }
 
+// ─── UPCOMING APPROVED LEAVE (company-wide) ────────────────────────────────
+// RPC, not a direct table query — leave_requests' RLS policy only lets a
+// session see its own rows (or hr/admin/manager see all), so a regular
+// employee's session querying this table directly for "everyone's
+// upcoming leave" would be silently filtered to just their own rows. This
+// SECURITY DEFINER RPC (see get_upcoming_approved_leaves in
+// supabase_migration_unpaid_leave.sql) bypasses that for this specific,
+// minimal, company-wide read.
+export async function getUpcomingApprovedLeaves(limit = 10) {
+  const todayStr = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .rpc('get_upcoming_approved_leaves', { as_of_date: todayStr, max_rows: limit })
+  if (error) throw error
+  return data || []
+}
+
 export async function applyLeave({ employeeId, leaveType, fromDate, toDate, days, reason, isHalfDay = false, isUnpaid = false }) {
   let paidDays = days
   let unpaidDays = 0
