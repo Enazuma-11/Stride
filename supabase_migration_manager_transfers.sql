@@ -52,7 +52,7 @@ RETURNS TABLE(
   LEFT JOIN employees m ON m.id = e.manager_id
   WHERE e.status = 'active'
   ORDER BY e.employee_code ASC;
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp;
 
 -- ─── NEW TABLE ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS manager_transfer_requests (
