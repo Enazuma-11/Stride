@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../../components/layout/AppShell'
-import { Card, Avatar, Spinner, EmptyState } from '../../components/ui'
+import { Card, Avatar, Button, Select, Textarea, Alert, Spinner, EmptyState } from '../../components/ui'
 import { C, FONTS } from '../../lib/constants'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import {
+  requestTransfer, getSentTransferRequests, withdrawTransferRequest,
+  getIncomingTransferRequests, targetDecideTransfer,
+} from '../../lib/api.managerTransfers'
 
 async function getAllEmployeesWithManagers() {
   const { data, error } = await supabase
@@ -20,8 +24,70 @@ async function getAllEmployeesWithManagers() {
   return data || []
 }
 
-function EmployeeCard({ emp, currentEmployeeId }) {
+function Modal({ title, subtitle, onClose, children }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(29,53,87,0.55)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480,
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 32px 80px rgba(29,53,87,0.25)',
+      }}>
+        <div style={{ padding: '22px 26px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: FONTS.display }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 12, color: C.textMid, marginTop: 3 }}>{subtitle}</div>}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: C.textLight, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: '22px 26px' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function TransferModal({ employee, eligibleManagers, currentManagerId, onClose, onSubmit }) {
+  const [toManagerId, setToManagerId] = useState('')
+  const [reason, setReason]           = useState('')
+  const [error, setError]             = useState('')
+  const [loading, setLoading]         = useState(false)
+
+  async function submit() {
+    if (!toManagerId) { setError('Please pick a target manager.'); return }
+    setLoading(true); setError('')
+    try {
+      await onSubmit({ employeeId: employee.id, fromManagerId: currentManagerId, toManagerId, reason })
+      onClose()
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const options = eligibleManagers.filter(m => m.id !== currentManagerId)
+
+  return (
+    <Modal title={`Transfer ${employee.full_name}`} subtitle="The new manager must accept, then HR/Admin gives final approval." onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Select
+          label="Transfer to manager"
+          value={toManagerId}
+          onChange={setToManagerId}
+          options={[{ value: '', label: 'Select a manager…' }, ...options.map(m => ({ value: m.id, label: `${m.full_name} — ${m.role}` }))]}
+          required
+        />
+        <Textarea label="Reason (optional)" value={reason} onChange={setReason} placeholder="Why is this transfer being requested?" />
+        {error && <Alert type="error" message={error} />}
+        <Button onClick={submit} disabled={loading} fullWidth>{loading ? 'Submitting…' : 'Submit Transfer Request'}</Button>
+      </div>
+    </Modal>
+  )
+}
+
+function EmployeeCard({ emp, currentEmployeeId, onTransferClick }) {
   const isMe = emp.id === currentEmployeeId
+  const iManageThem = emp.manager?.id === currentEmployeeId && !isMe
   const joinYear = emp.join_date ? new Date(emp.join_date).getFullYear() : null
 
   return (
@@ -110,6 +176,16 @@ function EmployeeCard({ emp, currentEmployeeId }) {
             </div>
           )}
 
+          {iManageThem && (
+            <button onClick={() => onTransferClick(emp)} style={{
+              marginTop: 4, padding: '7px 10px', borderRadius: 8, border: `1.5px solid ${C.brand}`,
+              background: 'transparent', color: C.brand, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', fontFamily: FONTS.body, width: '100%',
+            }}>
+              🔁 Transfer to another manager
+            </button>
+          )}
+
           {/* Join year */}
           {joinYear && (
             <div style={{ fontSize: 10, color: C.textLight, textAlign: 'center', marginTop: 4 }}>
@@ -128,15 +204,53 @@ export default function TeamDirectoryPage() {
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [dept,      setDept]      = useState('All')
+  const [view,      setView]      = useState('directory')
+  const [transferTarget, setTransferTarget] = useState(null)
+  const [sent,     setSent]     = useState([])
+  const [incoming, setIncoming] = useState([])
+  const [actionError, setActionError] = useState('')
 
-  useEffect(() => {
-    getAllEmployeesWithManagers()
-      .then(setEmployees)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [emps, sentReqs, incomingReqs] = await Promise.all([
+        getAllEmployeesWithManagers(),
+        employee?.id ? getSentTransferRequests(employee.id) : Promise.resolve([]),
+        employee?.id ? getIncomingTransferRequests(employee.id) : Promise.resolve([]),
+      ])
+      setEmployees(emps); setSent(sentReqs); setIncoming(incomingReqs)
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }
+
+  async function handleTransferSubmit(payload) {
+    await requestTransfer(payload)
+    const sentReqs = await getSentTransferRequests(employee.id)
+    setSent(sentReqs)
+  }
+
+  async function handleWithdraw(requestId) {
+    setActionError('')
+    try {
+      await withdrawTransferRequest(requestId, employee.id)
+      setSent(rs => rs.map(r => r.id === requestId ? { ...r, status: 'withdrawn' } : r))
+    } catch (e) { setActionError(e.message) }
+  }
+
+  async function handleIncomingDecision(requestId, decision) {
+    setActionError('')
+    try {
+      await targetDecideTransfer(requestId, decision, employee.id)
+      setIncoming(rs => rs.filter(r => r.id !== requestId))
+    } catch (e) { setActionError(e.message) }
+  }
 
   const departments = ['All', ...new Set(employees.map(e => e.department).filter(Boolean).sort())]
+  const eligibleManagers = [...new Map(
+    employees.filter(e => e.manager).map(e => [e.manager.id, e.manager])
+  ).values()]
 
   const filtered = employees.filter(e => {
     const matchSearch = !search ||
@@ -148,60 +262,136 @@ export default function TeamDirectoryPage() {
     return matchSearch && matchDept
   })
 
+  const STATUS_LABEL = {
+    pending_target: 'Awaiting new manager',
+    pending_hr: 'Awaiting HR approval',
+    approved: 'Approved',
+    rejected_by_target: 'Rejected by new manager',
+    rejected_by_hr: 'Rejected by HR',
+    withdrawn: 'Withdrawn',
+  }
+
   return (
     <AppShell title="Team Directory" subtitle={`${employees.length} team members`}>
-      {/* Search + filter */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16 }}>🔍</span>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, role, email or ID…"
-            style={{ width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', background: C.surface }}
-            onFocus={e => e.target.style.borderColor = C.teal}
-            onBlur={e => e.target.style.borderColor = C.border}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {departments.map(d => (
-            <button key={d} onClick={() => setDept(d)} style={{
-              padding: '8px 16px', borderRadius: 20, border: `1.5px solid ${dept === d ? C.brand : C.border}`,
-              background: dept === d ? C.brandLight : C.surface,
-              color: dept === d ? C.brand : C.textLight,
-              fontSize: 12, fontWeight: dept === d ? 700 : 400,
-              cursor: 'pointer', fontFamily: FONTS.body, transition: 'all 0.15s',
-            }}>
-              {d}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Stats bar */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        {[
-          { label: 'Total', val: employees.length, color: C.brand },
-          { label: 'Showing', val: filtered.length, color: C.teal },
-          { label: 'Departments', val: departments.length - 1, color: C.purple },
-        ].map(s => (
-          <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.textMid }}>
-            <span style={{ fontWeight: 800, color: s.color, fontSize: 18, fontFamily: FONTS.display }}>{s.val}</span>
-            <span>{s.label}</span>
-          </div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: C.surface, padding: 6, borderRadius: 10, width: 'fit-content', boxShadow: C.shadow }}>
+        {[{ id: 'directory', label: 'Directory' }, { id: 'transfers', label: '🔁 Transfers' }].map(t => (
+          <button key={t.id} onClick={() => setView(t.id)} style={{
+            padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: view === t.id ? C.brand : 'transparent',
+            color: view === t.id ? '#fff' : C.textMid,
+            fontSize: 13, fontWeight: 700, fontFamily: FONTS.display,
+          }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      {/* Grid */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={32} /></div>
-      ) : filtered.length === 0 ? (
-        <EmptyState icon="👥" title="No employees found" subtitle="Try a different search or filter." />
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-          {filtered.map(emp => (
-            <EmployeeCard key={emp.id} emp={emp} currentEmployeeId={employee?.id} />
-          ))}
+      {view === 'directory' && (
+        <>
+          {/* Search + filter */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16 }}>🔍</span>
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name, role, email or ID…"
+                style={{ width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', background: C.surface }}
+                onFocus={e => e.target.style.borderColor = C.teal}
+                onBlur={e => e.target.style.borderColor = C.border}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {departments.map(d => (
+                <button key={d} onClick={() => setDept(d)} style={{
+                  padding: '8px 16px', borderRadius: 20, border: `1.5px solid ${dept === d ? C.brand : C.border}`,
+                  background: dept === d ? C.brandLight : C.surface,
+                  color: dept === d ? C.brand : C.textLight,
+                  fontSize: 12, fontWeight: dept === d ? 700 : 400,
+                  cursor: 'pointer', fontFamily: FONTS.body, transition: 'all 0.15s',
+                }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Stats bar */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Total', val: employees.length, color: C.brand },
+              { label: 'Showing', val: filtered.length, color: C.teal },
+              { label: 'Departments', val: departments.length - 1, color: C.purple },
+            ].map(s => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.textMid }}>
+                <span style={{ fontWeight: 800, color: s.color, fontSize: 18, fontFamily: FONTS.display }}>{s.val}</span>
+                <span>{s.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={32} /></div>
+          ) : filtered.length === 0 ? (
+            <EmptyState icon="👥" title="No employees found" subtitle="Try a different search or filter." />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+              {filtered.map(emp => (
+                <EmployeeCard key={emp.id} emp={emp} currentEmployeeId={employee?.id} onTransferClick={setTransferTarget} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'transfers' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {actionError && <Alert type="error" message={actionError} />}
+
+          <Card style={{ padding: '20px 24px' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 14 }}>Sent by me</div>
+            {sent.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textLight }}>No transfer requests sent.</div>
+            ) : sent.map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: `1px solid ${C.border}` }}>
+                <Avatar initials={r.employee?.avatar_initials || '??'} size={32} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.employee?.full_name} → {r.to_manager?.full_name}</div>
+                  <div style={{ fontSize: 11, color: C.textLight }}>{STATUS_LABEL[r.status] || r.status}</div>
+                </div>
+                {['pending_target', 'pending_hr'].includes(r.status) && (
+                  <Button variant="outline" size="sm" onClick={() => handleWithdraw(r.id)}>Withdraw</Button>
+                )}
+              </div>
+            ))}
+          </Card>
+
+          <Card style={{ padding: '20px 24px' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 14 }}>Awaiting my decision</div>
+            {incoming.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textLight }}>Nothing awaiting your decision.</div>
+            ) : incoming.map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: `1px solid ${C.border}` }}>
+                <Avatar initials={r.employee?.avatar_initials || '??'} size={32} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.employee?.full_name}</div>
+                  <div style={{ fontSize: 11, color: C.textLight }}>From {r.from_manager?.full_name}{r.reason ? ` — "${r.reason}"` : ''}</div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => handleIncomingDecision(r.id, 'rejected')}>Reject</Button>
+                <Button size="sm" onClick={() => handleIncomingDecision(r.id, 'accepted')}>Accept</Button>
+              </div>
+            ))}
+          </Card>
         </div>
+      )}
+
+      {transferTarget && (
+        <TransferModal
+          employee={transferTarget}
+          eligibleManagers={eligibleManagers}
+          currentManagerId={employee?.id}
+          onClose={() => setTransferTarget(null)}
+          onSubmit={handleTransferSubmit}
+        />
       )}
     </AppShell>
   )
