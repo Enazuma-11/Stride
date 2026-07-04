@@ -12,6 +12,7 @@ import {
   approveEmployee, rejectEmployee, deactivateEmployee, resendInvite,
   validateEmailForType,
 } from '../../lib/api.onboarding'
+import { getPendingHRTransferRequests, hrDecideTransfer } from '../../lib/api.managerTransfers'
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 function OnboardBadge({ status }) {
@@ -648,20 +649,23 @@ function EmployeeTable({ employees, onResendInvite, onDeactivate, onEmployeeUpda
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function EmployeeManagementPage() {
   const r = useResponsive()
+  const { employee: currentEmployee } = useAuth()
   const [employees, setEmployees] = useState([])
   const [pending,   setPending]   = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
   const [toApprove, setToApprove] = useState(null)
   const [toast,     setToast]     = useState('')
+  const [tab, setTab] = useState('employees')
+  const [transferRequests, setTransferRequests] = useState([])
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     try {
-      const [emps, pend] = await Promise.all([getAllEmployeesForHR(), getPendingRegistrations()])
-      setEmployees(emps); setPending(pend)
+      const [emps, pend, transfers] = await Promise.all([getAllEmployeesForHR(), getPendingRegistrations(), getPendingHRTransferRequests()])
+      setEmployees(emps); setPending(pend); setTransferRequests(transfers)
     } finally { setLoading(false) }
   }
 
@@ -711,6 +715,14 @@ export default function EmployeeManagementPage() {
     } catch (e) { alert(e.message) }
   }
 
+  async function handleTransferDecision(requestId, decision) {
+    try {
+      await hrDecideTransfer(requestId, decision, currentEmployee?.id)
+      setTransferRequests(rs => rs.filter(r => r.id !== requestId))
+      showToast(decision === 'approved' ? '✅ Transfer approved.' : 'Transfer rejected.')
+    } catch (e) { alert(e.message) }
+  }
+
   if (loading) return (
     <AppShell title="Employee Management">
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size={36} /></div>
@@ -730,36 +742,73 @@ export default function EmployeeManagementPage() {
         }}>{toast}</div>
       )}
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:3, desktop:5}), gap: 10, marginBottom: 24 }}>
-        {[
-          { label: 'Active',           val: employees.filter(e => e.status === 'active').length,                          color: C.green,   bg: C.greenSoft  },
-          { label: 'Permanent',        val: employees.filter(e => e.employee_type === 'permanent' && e.status === 'active').length, color: C.brand,  bg: C.brandLight },
-          { label: 'Interns',          val: employees.filter(e => e.employee_type === 'intern' && e.status === 'active').length,    color: C.purple, bg: C.purpleSoft },
-          { label: 'Contractors',      val: employees.filter(e => e.employee_type === 'contractor' && e.status === 'active').length, color: C.amber, bg: C.amberSoft },
-          { label: 'Pending Approval', val: pending.length,                                                               color: C.accent,  bg: C.accentSoft },
-        ].map(s => (
-          <Card key={s.label} style={{ padding: '16px 18px', borderLeft: `4px solid ${s.color}` }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: "'Sora',sans-serif" }}>{s.val}</div>
-            <div style={{ fontSize: 11, color: C.textMid, marginTop: 3 }}>{s.label}</div>
-          </Card>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: C.surface, padding: 6, borderRadius: 10, width: 'fit-content', boxShadow: C.shadow }}>
+        {[{ id: 'employees', label: 'Employees' }, { id: 'transfers', label: `🔁 Transfer Requests${transferRequests.length ? ` (${transferRequests.length})` : ''}` }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: tab === t.id ? C.brand : 'transparent',
+            color: tab === t.id ? '#fff' : C.textMid,
+            fontSize: 13, fontWeight: 700, fontFamily: "'Sora',sans-serif",
+          }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <PendingBanner pending={pending} onApproveClick={handleApproveClick} onReject={handleReject} />
+      {tab === 'employees' && (
+        <>
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: cols(r, {mobile:2, tablet:3, desktop:5}), gap: 10, marginBottom: 24 }}>
+            {[
+              { label: 'Active',           val: employees.filter(e => e.status === 'active').length,                          color: C.green,   bg: C.greenSoft  },
+              { label: 'Permanent',        val: employees.filter(e => e.employee_type === 'permanent' && e.status === 'active').length, color: C.brand,  bg: C.brandLight },
+              { label: 'Interns',          val: employees.filter(e => e.employee_type === 'intern' && e.status === 'active').length,    color: C.purple, bg: C.purpleSoft },
+              { label: 'Contractors',      val: employees.filter(e => e.employee_type === 'contractor' && e.status === 'active').length, color: C.amber, bg: C.amberSoft },
+              { label: 'Pending Approval', val: pending.length,                                                               color: C.accent,  bg: C.accentSoft },
+            ].map(s => (
+              <Card key={s.label} style={{ padding: '16px 18px', borderLeft: `4px solid ${s.color}` }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: "'Sora',sans-serif" }}>{s.val}</div>
+                <div style={{ fontSize: 11, color: C.textMid, marginTop: 3 }}>{s.label}</div>
+              </Card>
+            ))}
+          </div>
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
-        <Button variant="outline" size="sm" onClick={() => setModal('create')}>🔑 Create with Password</Button>
-        <Button size="sm" onClick={() => setModal('invite')}>📧 Invite via Email</Button>
-      </div>
+          <PendingBanner pending={pending} onApproveClick={handleApproveClick} onReject={handleReject} />
 
-      <EmployeeTable
-        employees={employees}
-        onResendInvite={handleResendInvite}
-        onDeactivate={handleDeactivate}
-        onEmployeeUpdated={(updated) => setEmployees(emps => emps.map(e => e.id === updated.id ? updated : e))}
-      />
+          {/* Action buttons */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+            <Button variant="outline" size="sm" onClick={() => setModal('create')}>🔑 Create with Password</Button>
+            <Button size="sm" onClick={() => setModal('invite')}>📧 Invite via Email</Button>
+          </div>
+
+          <EmployeeTable
+            employees={employees}
+            onResendInvite={handleResendInvite}
+            onDeactivate={handleDeactivate}
+            onEmployeeUpdated={(updated) => setEmployees(emps => emps.map(e => e.id === updated.id ? updated : e))}
+          />
+        </>
+      )}
+
+      {tab === 'transfers' && (
+        <Card style={{ padding: '20px 24px' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "'Sora',sans-serif", marginBottom: 14 }}>Transfer Requests Awaiting Approval</div>
+          {transferRequests.length === 0 ? (
+            <EmptyState icon="🔁" title="Nothing pending" subtitle="Transfer requests accepted by the receiving manager will show up here." />
+          ) : transferRequests.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
+              <Avatar initials={r.employee?.avatar_initials || '??'} size={32} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.employee?.full_name}</div>
+                <div style={{ fontSize: 11, color: C.textLight }}>{r.from_manager?.full_name} → {r.to_manager?.full_name}{r.reason ? ` — "${r.reason}"` : ''}</div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => handleTransferDecision(r.id, 'rejected')}>Reject</Button>
+              <Button size="sm" onClick={() => handleTransferDecision(r.id, 'approved')}>Approve</Button>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {modal === 'invite'  && <InviteModal  onClose={() => setModal(null)} onSuccess={handleSuccess} />}
       {modal === 'create'  && <CreateModal  onClose={() => setModal(null)} onSuccess={handleSuccess} />}
