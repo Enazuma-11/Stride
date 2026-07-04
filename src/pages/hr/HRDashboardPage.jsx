@@ -170,20 +170,11 @@ export default function HRDashboardPage() {
       setRequests(rs => rs.map(r => r.id === leaveId ? { ...r, status } : r))
       // Send in-app notification
       await notifyLeaveDecision(updated, updated.employee_id, status)
-      // Send email notification
-      const leaveRecord = requests.find(r => r.id === leaveId)
-      const emp = leaveRecord?.employee
-      if (emp?.email) {
-        sendLeaveDecisionEmail({
-          toEmail:   emp.email,
-          toName:    emp.full_name || 'Employee',
-          status,
-          leaveType: updated.leave_type?.replace('_', '/'),
-          fromDate:  updated.from_date,
-          toDate:    updated.to_date,
-          days:      updated.days,
-        }).catch(() => {})
-      }
+      // NOTE: email-on-leave-decision is intentionally deferred — to be
+      // implemented later (see docs/AUDIT-2026-07-04.md). The previous code
+      // here called an unimported sendLeaveDecisionEmail(), which threw and
+      // surfaced a misleading "Error" alert even though the decision itself
+      // succeeded.
     } catch (e) {
       alert('Error: ' + e.message)
     }

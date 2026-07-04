@@ -3,7 +3,7 @@ import EmployeeICard from '../../components/EmployeeICard'
 import { TwoFactorSetup } from '../../components/TwoFactorAuth'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, Alert, Input, Select, Textarea, SectionTitle } from '../../components/ui'
-import { C, GENDERS, DEPARTMENTS, EMPLOYEE_TYPES } from '../../lib/constants'
+import { C, FONTS, GENDERS, DEPARTMENTS, EMPLOYEE_TYPES } from '../../lib/constants'
 import { useResponsive } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
 import {

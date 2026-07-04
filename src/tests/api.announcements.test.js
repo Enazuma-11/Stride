@@ -15,31 +15,21 @@ vi.mock('../lib/supabase', () => ({
   },
 }))
 
+// NOTE: leave-decision email is deferred (see docs/AUDIT-2026-07-04.md); its
+// test was removed along with the feature. The remaining email tests below are
+// mock-only smoke checks and should be replaced with real-behaviour tests when
+// the email feature is built out properly.
 vi.mock('../lib/email.notifications', () => ({
-  sendLeaveDecisionEmail: vi.fn().mockResolvedValue({ success: true }),
   sendWelcomeEmail:       vi.fn().mockResolvedValue({ success: true }),
   sendBirthdayEmail:      vi.fn().mockResolvedValue({ success: true }),
   sendPayslipReadyEmail:  vi.fn().mockResolvedValue({ success: true }),
 }))
 
 import {
-  sendLeaveDecisionEmail,
   sendWelcomeEmail,
   sendBirthdayEmail,
   sendPayslipReadyEmail,
 } from '../lib/email.notifications'
-
-describe('sendLeaveDecisionEmail', () => {
-  it('sends approved email with correct subject', async () => {
-    await sendLeaveDecisionEmail({ email: 'test@test.com', full_name: 'Test User' }, 'approved')
-    expect(sendLeaveDecisionEmail).toHaveBeenCalled()
-  })
-
-  it('sends rejected email with correct subject', async () => {
-    await sendLeaveDecisionEmail({ email: 'test@test.com', full_name: 'Test User' }, 'rejected')
-    expect(sendLeaveDecisionEmail).toHaveBeenCalled()
-  })
-})
 
 describe('sendWelcomeEmail', () => {
   it('sends welcome email with portal URL', async () => {
