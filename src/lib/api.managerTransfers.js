@@ -10,6 +10,21 @@ export async function requestTransfer({ employeeId, fromManagerId, toManagerId, 
     throw new Error('Target manager must be different from the current manager.')
   }
 
+  // Guard against naming a deactivated/offboarded employee as the target
+  // manager. deactivateEmployee() only flips status — it never reassigns or
+  // clears manager_id on that person's former reports — so a stale manager_id
+  // reference (and the eligible-managers dropdown derived from it) could
+  // otherwise surface someone who no longer works here.
+  const { data: targetManager, error: targetError } = await supabase
+    .from('employees')
+    .select('id, status')
+    .eq('id', toManagerId)
+    .single()
+  if (targetError) throw targetError
+  if (targetManager.status !== 'active') {
+    throw new Error('Target manager is not an active employee.')
+  }
+
   const { data: employee, error: empError } = await supabase
     .from('employees')
     .select('id, full_name, manager_id')

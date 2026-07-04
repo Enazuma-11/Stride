@@ -31,12 +31,32 @@ describe('requestTransfer', () => {
       .rejects.toThrow(/different from the current manager/i)
   })
 
-  it('throws when the employee is not actually a direct report of fromManagerId', async () => {
+  it('throws when the target manager is not an active employee', async () => {
     supabase.from.mockReturnValueOnce({
+      // fetch target manager
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: { id: 'emp-1', full_name: 'Jane Doe', manager_id: 'mgr-99' }, error: null }),
+      single: vi.fn().mockResolvedValue({ data: { id: 'mgr-2', status: 'inactive' }, error: null }),
     })
+
+    await expect(requestTransfer({ employeeId: 'emp-1', fromManagerId: 'mgr-1', toManagerId: 'mgr-2' }))
+      .rejects.toThrow(/not an active employee/i)
+  })
+
+  it('throws when the employee is not actually a direct report of fromManagerId', async () => {
+    supabase.from
+      .mockReturnValueOnce({
+        // fetch target manager
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: 'mgr-2', status: 'active' }, error: null }),
+      })
+      .mockReturnValueOnce({
+        // fetch employee
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: 'emp-1', full_name: 'Jane Doe', manager_id: 'mgr-99' }, error: null }),
+      })
 
     await expect(requestTransfer({ employeeId: 'emp-1', fromManagerId: 'mgr-1', toManagerId: 'mgr-2' }))
       .rejects.toThrow(/no longer your direct report/i)
@@ -44,6 +64,12 @@ describe('requestTransfer', () => {
 
   it('throws when the employee already has a non-terminal transfer request', async () => {
     supabase.from
+      .mockReturnValueOnce({
+        // fetch target manager
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: 'mgr-2', status: 'active' }, error: null }),
+      })
       .mockReturnValueOnce({
         // fetch employee
         select: vi.fn().mockReturnThis(),
@@ -66,6 +92,12 @@ describe('requestTransfer', () => {
     const mockRequest = { id: 'req-1', employee_id: 'emp-1', from_manager_id: 'mgr-1', to_manager_id: 'mgr-2', status: 'pending_target' }
 
     supabase.from
+      .mockReturnValueOnce({
+        // fetch target manager
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: 'mgr-2', status: 'active' }, error: null }),
+      })
       .mockReturnValueOnce({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),

@@ -34,6 +34,14 @@ DROP POLICY IF EXISTS "employees_select_team_directory" ON employees;
 -- Returns only the fields Team Directory actually renders, for any active
 -- employee to see any other active employee — via SECURITY DEFINER, not a
 -- broadened table policy, so no personal/home-address columns are exposed.
+--
+-- The manager join is conditioned on m.status = 'active': deactivateEmployee()
+-- only flips an employee's own status, it never reassigns or clears
+-- manager_id on that person's former reports. Without this condition, a
+-- report whose old manager was later offboarded would still show "Reports
+-- to <ex-employee>", and Team Directory's eligible-managers dropdown (built
+-- from whoever appears as a manager here) would offer that ex-employee as a
+-- valid transfer destination.
 CREATE OR REPLACE FUNCTION get_team_directory()
 RETURNS TABLE(
   id UUID, full_name TEXT, role TEXT, role_type TEXT, employee_type TEXT,
@@ -49,7 +57,7 @@ RETURNS TABLE(
     e.manager_id, m.full_name, m.avatar_initials,
     m.role, m.profile_photo_url
   FROM employees e
-  LEFT JOIN employees m ON m.id = e.manager_id
+  LEFT JOIN employees m ON m.id = e.manager_id AND m.status = 'active'
   WHERE e.status = 'active'
   ORDER BY e.employee_code ASC;
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp;
