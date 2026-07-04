@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-03 (Leave Overhaul merged)
+**Last updated:** 2026-07-03 (Manager Transfer Requests merged)
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`2e93dc7` — Merge worktree-leave-overhaul into main (Leave Overhaul feature)
+`6a73dee` — Merge worktree-manager-transfer-requests into main (Manager Transfer Requests feature)
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -28,6 +28,20 @@
 - (nothing in progress)
 
 ## RECENTLY COMPLETED
+
+### Manager Transfer Requests (2026-07-03)
+Built via 6-task plan (subagent-driven-development) + a final whole-branch review round + one fix-and-re-review pass.
+Spec: `docs/superpowers/specs/2026-07-03-manager-transfer-requests-design.md`
+Plan: `docs/superpowers/plans/2026-07-03-manager-transfer-requests.md`
+- A manager can request transferring one of their direct reports to another manager (Team Directory → "Transfer" button on a managed report's card). The receiving manager must accept before HR/Admin gives final approval — only on HR/Admin approval does `employees.manager_id` actually change.
+- New `manager_transfer_requests` table with a `pending_target → pending_hr → approved | rejected_by_target | rejected_by_hr | withdrawn` status machine; only one non-terminal request per employee at a time; the initiating manager can withdraw anytime before a terminal state.
+- Notifications at every stage: target manager on request creation, every active HR/Admin (broadcast) when the target manager accepts, the initiating manager on either rejection, and the transferred employee on final HR approval only.
+- HR's existing direct manager-edit in Employee Management is untouched — still instant, no approval needed; the new flow is an additional path, not a replacement.
+- Planning caught a real pre-existing bug before any code shipped: the `employees` table had no SELECT policy letting a regular (non-HR/Admin) employee see any row but their own, silently breaking Team Directory for everyone except HR/Admin (invisible until now since the only accounts ever tested with are HR/Admin).
+- Final whole-branch review then caught that the *fix* for that bug (a broadened `employees` SELECT policy) was itself too broad — Postgres RLS is row-level, not column-level, so it would have exposed home address, DOB, marital status, and personal email/mobile company-wide, far beyond what Team Directory displays. Corrected to a `SECURITY DEFINER` RPC (`get_team_directory`) that returns only the safe directory columns, with the base table reverted back to self/HR-only — verified column-by-column that every personal field is excluded.
+- One accepted, documented risk left in place after review: `manager_transfer_requests`' UPDATE policy has no `WITH CHECK` (status-transition rules are enforced in app code, not the DB) — bounded because `employees.manager_id` itself stays independently protected by separate self/HR-only policies, so this can't be used to force a real manager change.
+- 237 tests passing (up from 219 at the start of this feature)
+- ⚠️ `supabase_migration_manager_transfers.sql` still needs to be run manually in both Supabase projects — see Pending Actions below
 
 ### Leave Overhaul (2026-07-03)
 Built via 7-task plan (subagent-driven-development) + a final whole-branch review round.
@@ -240,6 +254,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
 | 🔴 HIGH | SQL: supabase_migration_notifications_insert_fix.sql | Run in both Supabase — re-applies the notifications_insert RLS policy (a manager-less employee's first regularization submission hit "row violates row-level security policy" on this table) |
 | 🔴 HIGH | SQL: supabase_migration_holiday_optins.sql | Run in both Supabase — required for the new Holiday Opt-In Calendar (employees can't pick optional holidays until this runs) |
+| 🔴 HIGH | SQL: supabase_migration_manager_transfers.sql | Run in both Supabase — required for Manager Transfer Requests (adds the table + the get_team_directory RPC that Team Directory now depends on to load at all) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
@@ -275,6 +290,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
 | supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
 | supabase_migration_holiday_optins.sql | ⚠️ PENDING |
+| supabase_migration_manager_transfers.sql | ⚠️ PENDING |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
 
@@ -292,6 +308,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
 | supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
 | supabase_migration_holiday_optins.sql | ⚠️ PENDING |
+| supabase_migration_manager_transfers.sql | ⚠️ PENDING |
 
 ---
 
