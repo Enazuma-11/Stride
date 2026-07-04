@@ -376,10 +376,15 @@ function EditEmployeeModal({ employee, allEmployees, onClose, onSaved }) {
 function ManagerSelector({ value, onChange, excludeId }) {
   const [managers, setManagers] = useState([])
   useEffect(() => {
+    // Any active employee can be assigned as a manager — "manager" isn't a
+    // role_type, it's emergent from being referenced by another employee's
+    // manager_id (same convention used by Attendance and Transfer Requests).
+    // Previously restricted to role_type IN ('admin','hr'), which meant HR
+    // couldn't promote a regular employee into managing anyone for the
+    // first time — they'd never even appear in this dropdown.
     supabase.from('employees')
       .select('id, full_name, role, employee_code')
       .eq('status', 'active')
-      .in('role_type', ['admin', 'hr'])
       .order('full_name')
       .then(({ data }) => setManagers(data || []))
   }, [])
