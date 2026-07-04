@@ -5,6 +5,8 @@ import {
   requestTransfer,
   getSentTransferRequests,
   withdrawTransferRequest,
+  getIncomingTransferRequests,
+  targetDecideTransfer,
 } from '../lib/api.managerTransfers'
 
 vi.mock('../lib/api.notifications', () => ({
@@ -133,5 +135,91 @@ describe('withdrawTransferRequest', () => {
 
     await withdrawTransferRequest('req-1', 'mgr-1')
     expect(updateEq).toHaveBeenCalledWith('id', 'req-1')
+  })
+})
+
+// ── getIncomingTransferRequests ───────────────────────────────────────────────
+describe('getIncomingTransferRequests', () => {
+  it('queries by to_manager_id and pending_target status', async () => {
+    const eqStatus = vi.fn().mockReturnThis()
+    const orderMock = vi.fn().mockResolvedValue({ data: [{ id: 'req-1' }], error: null })
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: orderMock,
+    })
+
+    const result = await getIncomingTransferRequests('mgr-2')
+    expect(result).toEqual([{ id: 'req-1' }])
+  })
+})
+
+// ── targetDecideTransfer ───────────────────────────────────────────────────────
+describe('targetDecideTransfer', () => {
+  it('throws on an invalid decision value', async () => {
+    await expect(targetDecideTransfer('req-1', 'maybe', 'mgr-2')).rejects.toThrow(/invalid decision/i)
+  })
+
+  it('throws if the request is not pending_target', async () => {
+    supabase.from.mockReturnValueOnce({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: { id: 'req-1', status: 'pending_hr', employee: { full_name: 'Jane Doe' } }, error: null }),
+    })
+
+    await expect(targetDecideTransfer('req-1', 'accepted', 'mgr-2')).rejects.toThrow(/no longer awaiting your decision/i)
+  })
+
+  it('on accept, sets status to pending_hr and broadcasts to every active HR/Admin', async () => {
+    const mockRequest = { id: 'req-1', status: 'pending_target', from_manager_id: 'mgr-1', employee: { full_name: 'Jane Doe' } }
+    const updateEq = vi.fn().mockResolvedValue({ data: null, error: null })
+    let insertedRows = null
+
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockRequest, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: updateEq,
+      })
+      .mockReturnValueOnce({
+        insert: vi.fn().mockImplementation(rows => { insertedRows = rows; return Promise.resolve({ data: null, error: null }) }),
+      })
+
+    supabase.rpc.mockResolvedValueOnce({ data: [{ id: 'hr-1' }, { id: 'hr-2' }], error: null })
+
+    await targetDecideTransfer('req-1', 'accepted', 'mgr-2')
+
+    expect(supabase.rpc).toHaveBeenCalledWith('get_hr_admin_employee_ids')
+    expect(insertedRows).toHaveLength(2)
+    expect(insertedRows.map(r => r.employee_id).sort()).toEqual(['hr-1', 'hr-2'])
+    expect(insertedRows.every(r => r.type === 'manager_transfer_pending_hr')).toBe(true)
+  })
+
+  it('on reject, sets status to rejected_by_target and notifies the initiating manager only', async () => {
+    const mockRequest = { id: 'req-1', status: 'pending_target', from_manager_id: 'mgr-1', employee: { full_name: 'Jane Doe' } }
+    const updateEq = vi.fn().mockResolvedValue({ data: null, error: null })
+
+    supabase.from
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockRequest, error: null }),
+      })
+      .mockReturnValueOnce({
+        update: vi.fn().mockReturnThis(),
+        eq: updateEq,
+      })
+
+    await targetDecideTransfer('req-1', 'rejected', 'mgr-2')
+
+    expect(createNotification).toHaveBeenCalledTimes(1)
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      employeeId: 'mgr-1',
+      type: 'manager_transfer_decided',
+    }))
   })
 })

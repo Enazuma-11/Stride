@@ -88,3 +88,75 @@ export async function withdrawTransferRequest(requestId, managerId) {
     .eq('id', requestId)
   if (updateError) throw updateError
 }
+
+// ─── LIST REQUESTS AWAITING MY DECISION (target manager) ─────────────────────
+export async function getIncomingTransferRequests(managerId) {
+  const { data, error } = await supabase
+    .from('manager_transfer_requests')
+    .select('*, employee:employee_id(full_name, avatar_initials), from_manager:from_manager_id(full_name, avatar_initials)')
+    .eq('to_manager_id', managerId)
+    .eq('status', 'pending_target')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// ─── TARGET MANAGER DECISION ──────────────────────────────────────────────────
+export async function targetDecideTransfer(requestId, decision, targetManagerId) {
+  if (!['accepted', 'rejected'].includes(decision)) {
+    throw new Error('Invalid decision — must be "accepted" or "rejected".')
+  }
+
+  const { data: request, error } = await supabase
+    .from('manager_transfer_requests')
+    .select('*, employee:employee_id(full_name)')
+    .eq('id', requestId)
+    .eq('to_manager_id', targetManagerId)
+    .single()
+  if (error) throw error
+  if (request.status !== 'pending_target') {
+    throw new Error('This request is no longer awaiting your decision.')
+  }
+
+  const newStatus = decision === 'accepted' ? 'pending_hr' : 'rejected_by_target'
+  const { error: updateError } = await supabase
+    .from('manager_transfer_requests')
+    .update({ status: newStatus, target_decided_at: new Date().toISOString() })
+    .eq('id', requestId)
+  if (updateError) throw updateError
+
+  // Notification delivery is best-effort — the decision itself is already
+  // committed above, so a notification hiccup must not surface as a
+  // failure to the manager who successfully recorded their decision.
+  try {
+    if (decision === 'accepted') {
+      // Broadcast to every active HR/Admin, not just one — mirrors
+      // attendance regularization's pending_admin notification. RPC, not a
+      // direct table query, because employees_select_own would otherwise
+      // silently return zero HR/Admin rows to this (non-HR) caller.
+      const { data: hrList } = await supabase.rpc('get_hr_admin_employee_ids')
+      if (hrList?.length) {
+        await supabase.from('notifications').insert(
+          hrList.map(hr => ({
+            employee_id: hr.id,
+            type: 'manager_transfer_pending_hr',
+            title: 'Transfer Request — Awaiting Approval',
+            message: `${request.employee.full_name}'s transfer has been accepted by the new manager and needs your approval.`,
+            metadata: { request_id: requestId },
+            is_read: false,
+          }))
+        )
+      }
+    } else {
+      await createNotification({
+        employeeId: request.from_manager_id,
+        type: 'manager_transfer_decided',
+        title: 'Transfer Request Rejected',
+        message: `The target manager declined your transfer request for ${request.employee.full_name}.`,
+        metadata: { request_id: requestId },
+      })
+    }
+  } catch (e) { console.warn('Transfer decision notification failed:', e.message) }
+
+  return { ...request, status: newStatus }
+}
