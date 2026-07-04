@@ -143,16 +143,19 @@ describe('withdrawTransferRequest', () => {
 // ── getIncomingTransferRequests ───────────────────────────────────────────────
 describe('getIncomingTransferRequests', () => {
   it('queries by to_manager_id and pending_target status', async () => {
-    const eqStatus = vi.fn().mockReturnThis()
+    const eqCalls = []
+    const eqMock = vi.fn().mockImplementation((col, val) => { eqCalls.push([col, val]); return chain })
     const orderMock = vi.fn().mockResolvedValue({ data: [{ id: 'req-1' }], error: null })
-    supabase.from.mockReturnValueOnce({
+    const chain = {
       select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
+      eq: eqMock,
       order: orderMock,
-    })
+    }
+    supabase.from.mockReturnValueOnce(chain)
 
     const result = await getIncomingTransferRequests('mgr-2')
     expect(result).toEqual([{ id: 'req-1' }])
+    expect(eqCalls).toEqual([['to_manager_id', 'mgr-2'], ['status', 'pending_target']])
   })
 })
 
@@ -229,15 +232,18 @@ describe('targetDecideTransfer', () => {
 // ── getPendingHRTransferRequests ──────────────────────────────────────────────
 describe('getPendingHRTransferRequests', () => {
   it('queries by pending_hr status', async () => {
+    const eqMock = vi.fn().mockReturnThis()
     const orderMock = vi.fn().mockResolvedValue({ data: [{ id: 'req-1' }], error: null })
     supabase.from.mockReturnValueOnce({
       select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
+      eq: eqMock,
       order: orderMock,
     })
 
     const result = await getPendingHRTransferRequests()
     expect(result).toEqual([{ id: 'req-1' }])
+    expect(eqMock).toHaveBeenCalledWith('status', 'pending_hr')
+    expect(eqMock).toHaveBeenCalledTimes(1)
   })
 })
 

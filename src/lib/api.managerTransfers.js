@@ -73,7 +73,7 @@ export async function getSentTransferRequests(managerId) {
 export async function withdrawTransferRequest(requestId, managerId) {
   const { data: request, error } = await supabase
     .from('manager_transfer_requests')
-    .select('*')
+    .select('id, status')
     .eq('id', requestId)
     .eq('from_manager_id', managerId)
     .single()

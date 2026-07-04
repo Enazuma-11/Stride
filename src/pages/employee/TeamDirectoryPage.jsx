@@ -10,18 +10,25 @@ import {
 } from '../../lib/api.managerTransfers'
 
 async function getAllEmployeesWithManagers() {
-  const { data, error } = await supabase
-    .from('employees')
-    .select(`
-      id, full_name, role, role_type, employee_type, department,
-      email, phone, employee_code, avatar_initials, profile_photo_url,
-      join_date, status,
-      manager:manager_id(id, full_name, avatar_initials, role, profile_photo_url)
-    `)
-    .eq('status', 'active')
-    .order('employee_code', { ascending: true })
+  // Uses the get_team_directory() SECURITY DEFINER RPC rather than a direct
+  // table query: RLS on `employees` is row-level, not column-level, so a
+  // table policy broad enough to let any employee see any other employee's
+  // row would also expose personal columns (home address, DOB, personal
+  // email/mobile, etc.) that Team Directory never renders. The RPC returns
+  // only the safe directory columns. See supabase_migration_manager_transfers.sql.
+  const { data, error } = await supabase.rpc('get_team_directory')
   if (error) throw error
-  return data || []
+  return (data || []).map(row => ({
+    id: row.id, full_name: row.full_name, role: row.role, role_type: row.role_type,
+    employee_type: row.employee_type, department: row.department, email: row.email,
+    phone: row.phone, employee_code: row.employee_code, avatar_initials: row.avatar_initials,
+    profile_photo_url: row.profile_photo_url, join_date: row.join_date, status: row.status,
+    manager: row.manager_id ? {
+      id: row.manager_id, full_name: row.manager_full_name,
+      avatar_initials: row.manager_avatar_initials, role: row.manager_role,
+      profile_photo_url: row.manager_profile_photo_url,
+    } : null,
+  }))
 }
 
 function Modal({ title, subtitle, onClose, children }) {
