@@ -41,7 +41,7 @@ New table `manager_transfer_requests`:
 1. **Initiate** — Manager A, on Team Directory, picks a direct report and a target manager (dropdown scoped to employees who already have ≥1 direct report, excluding the employee's current manager), optional reason, submits. Row inserted with `status='pending_target'`. Notification sent to Manager B.
 2. **Target decision** — Manager B sees it in a "Transfers" panel on Team Directory (both a list and a notification link to the same place).
    - Reject → `status='rejected_by_target'`, `target_decided_at` set. Notify Manager A only. Terminal.
-   - Accept → `status='pending_hr'`, `target_decided_at` set. No notification to the employee yet.
+   - Accept → `status='pending_hr'`, `target_decided_at` set. Notify every active HR/Admin (not Manager A, not the employee yet) that a request is awaiting their decision, via the same `get_hr_admin_employee_ids` RPC + bulk-insert pattern used by Attendance Regularization's `pending_admin` step — this is a broadcast, not a single notification, so it must reach every HR/Admin, not just one.
 3. **HR/Admin decision** — new "Transfer Requests" tab on `EmployeeManagementPage.jsx`, listing all `pending_hr` rows.
    - Reject → `status='rejected_by_hr'`, `hr_decided_by`/`hr_decided_at` set. Notify Manager A only. Terminal.
    - Approve → `status='approved'`, `hr_decided_by`/`hr_decided_at` set, AND `employees.manager_id` updated to `to_manager_id` in the same operation. Notify the transferred employee that their manager has changed. Terminal.
@@ -64,13 +64,14 @@ Mirrors the existing Attendance Regularization pattern, reusing the already-depl
 
 ## Notifications
 
-Reuses the existing `notifications` table / `createNotification` single-recipient helper (this is a single-recipient notification at each stage, not a broadcast):
-- On create → target manager.
-- On target rejection → initiating manager.
-- On HR rejection → initiating manager.
-- On HR approval → the transferred employee ("Your reporting manager has changed to X").
+Reuses the existing `notifications` table. Most steps are a single-recipient notification via `createNotification`; the target-manager-acceptance step is a broadcast to every active HR/Admin via `get_hr_admin_employee_ids` + bulk insert (mirroring Attendance Regularization's `pending_admin` notification):
+- On create → target manager (single).
+- On target acceptance → every active HR/Admin (broadcast, not single — this is the step Attendance Regularization's `pending_admin` notification mirrors).
+- On target rejection → initiating manager (single).
+- On HR rejection → initiating manager (single).
+- On HR approval → the transferred employee (single, "Your reporting manager has changed to X").
 
-No broadcast-to-everyone step in this feature (unlike the Leave Overhaul's team-wide approval notice) — this is a private, need-to-know workflow between the two managers, HR, and the affected employee.
+No company-wide broadcast in this feature (unlike the Leave Overhaul's team-wide approval notice) — the widest audience is "every HR/Admin," not every employee; this stays a private, need-to-know workflow between the two managers, HR, and the affected employee.
 
 ## Edge Cases
 
@@ -84,7 +85,7 @@ No broadcast-to-everyone step in this feature (unlike the Leave Overhaul's team-
 
 Following the established bug-class checklist from prior features:
 - RLS: verify a manager can't see/act on requests they're not party to; verify HR/Admin sees all.
-- Notification completeness: each stage sends to exactly the right single recipient, never zero, never the wrong one.
+- Notification completeness: single-recipient stages send to exactly the right recipient, never zero, never the wrong one; the HR/Admin broadcast on target acceptance reaches every active HR/Admin, never just `list[0]`.
 - Status-transition guards: a target manager can't skip ahead and set `approved`; HR can't act on a `pending_target` row.
 - One-in-flight-per-employee constraint enforced before insert.
 - Withdraw only allowed by the initiating manager, only in non-terminal states.
