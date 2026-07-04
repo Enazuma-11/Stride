@@ -160,3 +160,74 @@ export async function targetDecideTransfer(requestId, decision, targetManagerId)
 
   return { ...request, status: newStatus }
 }
+
+// ─── HR/ADMIN QUEUE ────────────────────────────────────────────────────────────
+export async function getPendingHRTransferRequests() {
+  const { data, error } = await supabase
+    .from('manager_transfer_requests')
+    .select('*, employee:employee_id(full_name, avatar_initials), from_manager:from_manager_id(full_name), to_manager:to_manager_id(full_name)')
+    .eq('status', 'pending_hr')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// ─── HR/ADMIN FINAL DECISION ───────────────────────────────────────────────────
+export async function hrDecideTransfer(requestId, decision, hrAdminId) {
+  if (!['approved', 'rejected'].includes(decision)) {
+    throw new Error('Invalid decision — must be "approved" or "rejected".')
+  }
+
+  const { data: request, error } = await supabase
+    .from('manager_transfer_requests')
+    .select('*, employee:employee_id(full_name)')
+    .eq('id', requestId)
+    .single()
+  if (error) throw error
+  if (request.status !== 'pending_hr') {
+    throw new Error('This request is not awaiting HR approval.')
+  }
+
+  // Apply the actual manager change BEFORE marking the request approved —
+  // if this write fails, the request stays pending_hr (retriable) instead
+  // of being marked approved without the change having actually happened.
+  if (decision === 'approved') {
+    const { error: managerError } = await supabase
+      .from('employees')
+      .update({ manager_id: request.to_manager_id })
+      .eq('id', request.employee_id)
+    if (managerError) throw managerError
+  }
+
+  const newStatus = decision === 'approved' ? 'approved' : 'rejected_by_hr'
+  const { error: updateError } = await supabase
+    .from('manager_transfer_requests')
+    .update({ status: newStatus, hr_decided_by: hrAdminId, hr_decided_at: new Date().toISOString() })
+    .eq('id', requestId)
+  if (updateError) throw updateError
+
+  // Notification delivery is best-effort — the decision itself is already
+  // committed above, so a notification hiccup must not surface as a
+  // failure to the HR/Admin who successfully recorded it.
+  try {
+    if (decision === 'approved') {
+      await createNotification({
+        employeeId: request.employee_id,
+        type: 'manager_transfer_decided',
+        title: 'Your Reporting Manager Has Changed',
+        message: 'Your reporting manager has been updated following an approved transfer.',
+        metadata: { request_id: requestId },
+      })
+    } else {
+      await createNotification({
+        employeeId: request.from_manager_id,
+        type: 'manager_transfer_decided',
+        title: 'Transfer Request Rejected',
+        message: `HR rejected your transfer request for ${request.employee.full_name}.`,
+        metadata: { request_id: requestId },
+      })
+    }
+  } catch (e) { console.warn('Transfer HR decision notification failed:', e.message) }
+
+  return { ...request, status: newStatus }
+}
