@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-03 (Manager Transfer Requests merged)
+**Last updated:** 2026-07-05 (Lifecycle Reminders deployed)
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`6a73dee` — Merge worktree-manager-transfer-requests into main (Manager Transfer Requests feature)
+`3b65cad` — Retire page-load runDailyChecks — lifecycle reminders now handled by scheduled SQL job
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -28,6 +28,27 @@
 - (nothing in progress)
 
 ## RECENTLY COMPLETED
+
+### Lifecycle Reminders Engine (2026-07-05) ✅ DEPLOYED
+Spec: `docs/superpowers/specs/2026-07-04-lifecycle-reminders-design.md`
+Plan: `docs/superpowers/plans/2026-07-04-lifecycle-reminders.md`
+- A daily pg_cron job (`run_lifecycle_reminders()` at 3:30 AM UTC = 9 AM IST) fires 14 event types reliably, independent of user login
+- Events covered: birthday, work anniversary, new joiner, internship ending (14d/3d), probation ending (14d/3d), passport expiry (30d/7d/0d), visa expiry (30d/7d/0d), certification expiry (30d/7d/0d), leave ending (back-to-work), aging leave approval (3d/7d), aging regularization (3d/7d), aging transfer (3d/7d), holiday reminder (3d before), monthly regularization nudge (from 25th)
+- New `lifecycle_reminder_log` table with deterministic dedup keys — each stage fires exactly once, missed runs self-heal
+- All date logic in IST (`Asia/Kolkata` timezone) — fixes the off-by-one boundary bug identified in the audit
+- SECURITY DEFINER function with `SET search_path = public, pg_temp` — bypasses RLS safely to cross-query all employees
+- Retired the page-load `runDailyChecks` trigger from `TopBar.jsx` and deleted `runDailyChecks`, `shouldSendMonthlyRegularizationReminder`, `workingDaysInRange` from `api.notifications.js`
+- 214 tests passing (net reduction from 236 — deleted the 22 stubs testing retired functions; all real coverage intact)
+- ⚠️ **Two behaviors not yet ported**: weekly attendance report notification (Mondays) and holiday opt-in window notifications — these were in runDailyChecks but not included in the lifecycle spec; follow-up task queued
+- `supabase_migration_lifecycle_reminders.sql` ✅ run in both Production and Test; cron job active in both
+
+### Whole-Project Audit + Bug Fixes (2026-07-04)
+Audit doc: `docs/AUDIT-2026-07-04.md`
+- BUG-1 fixed: `ProfilePage.jsx` crashed on Exit tab due to missing `FONTS` import — added to constants import (one-line fix)
+- BUG-2 fixed: `HRDashboardPage.jsx` leave approval showed a misleading error alert due to `sendLeaveDecisionEmail` called without import — removed the email block (email is deferred until MSG91 domain is verified)
+- BUG-4 fixed: `api.announcements.test.js` had a misfiled `sendLeaveDecisionEmail` test with wrong signature testing only a mock — removed (was providing false confidence on the email path)
+- BUG-3 (leave-decision emails never send anywhere) deferred — depends on MSG91 domain verification
+- 5 "make it smarter" opportunities documented in audit; Lifecycle Reminders was the first
 
 ### Manager Transfer Requests (2026-07-03)
 Built via 6-task plan (subagent-driven-development) + a final whole-branch review round + one fix-and-re-review pass.
@@ -232,6 +253,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 - Events: leave apply → HR, leave approve/reject → employee, leave cancel → HR,
   HR record leave → employee, announcement → all, onboarding → HR,
   account approved → employee, birthday → employee+HR, holiday 3-day warning → all
+- Lifecycle Reminders Engine (pg_cron, 9 AM IST daily): 14 event types covering people milestones, employment transitions, compliance expiry, operational aging — fires reliably regardless of user login; dedup log prevents double-firing
 
 ### ✅ PWA
 - Standalone app, start at /dashboard
@@ -240,8 +262,8 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 - Install prompt (Android auto, iOS manual)
 
 ### ✅ Tests
-- 105 tests across 6 files — all passing
-- api.attendance, api.leave, api.payslips, api.announcements, constants, validation
+- 214 tests across 9 files — all passing
+- api.attendance, api.leave, api.payslips, api.announcements, constants, validation, api.managerTransfers, api.holidayOptins, api.leaveBalances
 
 ---
 
@@ -257,6 +279,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | 🔴 HIGH | SQL: supabase_migration_notifications_insert_fix.sql | Run in both Supabase — re-applies the notifications_insert RLS policy (a manager-less employee's first regularization submission hit "row violates row-level security policy" on this table) |
 | 🔴 HIGH | SQL: supabase_migration_holiday_optins.sql | Run in both Supabase — required for the new Holiday Opt-In Calendar (employees can't pick optional holidays until this runs) |
 | 🔴 HIGH | SQL: supabase_migration_manager_transfers.sql | Run in both Supabase — required for Manager Transfer Requests (adds the table + the get_team_directory RPC that Team Directory now depends on to load at all) |
+| ✅ DONE | SQL: supabase_migration_lifecycle_reminders.sql | ✅ Run in both Supabase — lifecycle_reminder_log table + run_lifecycle_reminders() function + pg_cron job active at 3:30 UTC (9 AM IST) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
 | 🟡 MED | Custom domain | Add CNAME in GoDaddy → portal.sportechinnolab.org |
@@ -293,6 +316,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
 | supabase_migration_holiday_optins.sql | ⚠️ PENDING |
 | supabase_migration_manager_transfers.sql | ⚠️ PENDING |
+| supabase_migration_lifecycle_reminders.sql | ✅ DEPLOYED |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
 
