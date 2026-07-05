@@ -585,3 +585,54 @@ SELECT routine_name
 FROM information_schema.routines
 WHERE routine_name = 'run_lifecycle_reminders'
   AND routine_schema = 'public';
+
+-- ============================================================
+-- ONE-TIME SETUP: SCHEDULE THE DAILY JOB
+-- Run this block SEPARATELY after the migration above.
+-- Run in BOTH Production and Test Supabase SQL editors.
+-- ============================================================
+
+/*
+-- Enable pg_cron (only once per Supabase project)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Schedule daily at 3:30 AM UTC = 9:00 AM IST
+SELECT cron.schedule(
+  'lifecycle_reminders_daily',
+  '30 3 * * *',
+  'SELECT run_lifecycle_reminders();'
+);
+
+-- Verify the job registered
+SELECT jobid, jobname, schedule, command, active
+FROM cron.job
+WHERE jobname = 'lifecycle_reminders_daily';
+
+-- ── Useful monitoring queries ────────────────────────────────
+
+-- What fired in the last 24 hours?
+SELECT event_type, COUNT(*), MAX(fired_at)
+FROM lifecycle_reminder_log
+WHERE fired_at > NOW() - INTERVAL '24 hours'
+GROUP BY event_type ORDER BY event_type;
+
+-- What landed in the bell in the last 24 hours?
+SELECT type, title, created_at FROM notifications
+WHERE type = 'lifecycle_reminder'
+  AND created_at > NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC;
+
+-- Manually trigger (safe — dedup prevents double-firing):
+SELECT run_lifecycle_reminders();
+
+-- Disable the job (keeps function and log):
+SELECT cron.unschedule('lifecycle_reminders_daily');
+
+-- Re-enable:
+SELECT cron.schedule('lifecycle_reminders_daily', '30 3 * * *', 'SELECT run_lifecycle_reminders();');
+
+-- Full rollback:
+SELECT cron.unschedule('lifecycle_reminders_daily');
+DROP TABLE IF EXISTS lifecycle_reminder_log;
+DROP FUNCTION IF EXISTS run_lifecycle_reminders();
+*/
