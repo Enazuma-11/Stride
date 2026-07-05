@@ -76,7 +76,7 @@ describe('getPendingTransfersForHR', () => {
       }),
     })
     const result = await getPendingTransfersForHR()
-    expect(supabase.from).toHaveBeenCalledWith('manager_transfers')
+    expect(supabase.from).toHaveBeenCalledWith('manager_transfer_requests')
     expect(result[0]).toMatchObject({ id: 't1', full_name: 'Ravi Kumar', to_manager_name: 'Neha Patel' })
   })
 
@@ -153,15 +153,15 @@ describe('getExpiringCertificationsForHR', () => {
 // ── getProbationEndingSoon ────────────────────────────────────────────────────
 describe('getProbationEndingSoon', () => {
   it('includes employees whose 6-month mark is within 14 days', async () => {
-    // joining_date 2026-01-05 → end = 2026-07-05 → days_left = 0 → included
-    // joining_date 2026-01-01 → end = 2026-07-01 → days_left = -4 → excluded
+    // join_date 2026-01-05 → end = 2026-07-05 → days_left = 0 → included
+    // join_date 2026-01-01 → end = 2026-07-01 → days_left = -4 → excluded
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           in: vi.fn().mockResolvedValue({
             data: [
-              { id: 'emp-1', full_name: 'Priya', employee_type: 'intern',    joining_date: '2026-01-05' },
-              { id: 'emp-2', full_name: 'Ravi',  employee_type: 'probation', joining_date: '2026-01-01' },
+              { id: 'emp-1', full_name: 'Priya', employee_type: 'intern',    join_date: '2026-01-05' },
+              { id: 'emp-2', full_name: 'Ravi',  employee_type: 'probation', join_date: '2026-01-01' },
             ],
             error: null,
           }),
@@ -199,13 +199,15 @@ describe('getProbationEndingSoon', () => {
 // ── getMyUnregularizedSessions ────────────────────────────────────────────────
 describe('getMyUnregularizedSessions', () => {
   it('returns open sessions for the employee', async () => {
-    const raw = [{ id: 's1', check_in: '2026-07-03T09:00:00Z', check_out: null, status: 'present' }]
+    const raw = [{ id: 's1', date: '2026-07-03', check_in: '2026-07-03T09:00:00Z' }]
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
-            is: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: raw, error: null }),
+            lt: vi.fn().mockReturnValue({
+              is: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: raw, error: null }),
+              }),
             }),
           }),
         }),
@@ -221,8 +223,10 @@ describe('getMyUnregularizedSessions', () => {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
-            is: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: null, error: null }),
+            lt: vi.fn().mockReturnValue({
+              is: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
             }),
           }),
         }),
@@ -236,8 +240,10 @@ describe('getMyUnregularizedSessions', () => {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
-            is: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+            lt: vi.fn().mockReturnValue({
+              is: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+              }),
             }),
           }),
         }),

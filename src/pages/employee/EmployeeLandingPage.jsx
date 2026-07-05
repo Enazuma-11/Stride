@@ -60,8 +60,8 @@ function buildSmartPrompts({ unregularized, myRequests, expiringCerts, employee,
     })
   })
 
-  if (employee?.employee_type && ['intern', 'probation'].includes(employee.employee_type) && employee.joining_date) {
-    const end = new Date(employee.joining_date)
+  if (employee?.employee_type && ['intern', 'probation'].includes(employee.employee_type) && employee.join_date) {
+    const end = new Date(employee.join_date)
     end.setMonth(end.getMonth() + 6)
     const d = Math.ceil((end - today) / 86400000)
     if (d >= 0 && d <= 14) {
@@ -127,6 +127,7 @@ export default function EmployeeLandingPage() {
   const [unregularized,  setUnregularized]  = useState([])
   const [expiringCerts,  setExpiringCerts]  = useState([])
   const [loading,        setLoading]        = useState(true)
+  const [loadError,      setLoadError]      = useState(null)
 
   useEffect(() => {
     if (!employee) return
@@ -150,12 +151,24 @@ export default function EmployeeLandingPage() {
       setUpcomingLeaves(upcoming)
       setUnregularized(unreg)
       setExpiringCerts(certs)
+    }).catch(err => {
+      console.error('Employee dashboard load failed:', err)
+      setLoadError(err.message || 'Failed to load dashboard data.')
     }).finally(() => setLoading(false))
   }, [employee])
 
   if (loading) return (
     <AppShell title="Dashboard">
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size={36} /></div>
+    </AppShell>
+  )
+
+  if (loadError) return (
+    <AppShell title={`Good ${getTimeOfDay()}, ${employee?.full_name?.split(' ')[0]} 👋`}>
+      <Card style={{ padding: '24px', borderLeft: `4px solid ${C.accent}`, marginTop: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.accent, marginBottom: 4 }}>Failed to load dashboard</div>
+        <div style={{ fontSize: 12, color: C.textMid }}>{loadError}</div>
+      </Card>
     </AppShell>
   )
 

@@ -19,7 +19,7 @@ export async function getPendingRegularizationsForHR() {
 
 export async function getPendingTransfersForHR() {
   const { data, error } = await supabase
-    .from('manager_transfers')
+    .from('manager_transfer_requests')
     .select('id, employee_id, status, created_at, employee:employee_id(full_name), to_manager:to_manager_id(full_name)')
     .in('status', ['pending_hr', 'pending_target'])
     .order('created_at', { ascending: true })
@@ -56,14 +56,14 @@ export async function getExpiringCertificationsForHR() {
 export async function getProbationEndingSoon() {
   const { data, error } = await supabase
     .from('employees')
-    .select('id, full_name, employee_type, joining_date')
+    .select('id, full_name, employee_type, join_date')
     .eq('status', 'active')
     .in('employee_type', ['intern', 'probation'])
   if (error) throw error
   const today = new Date(todayISO())
   return (data || [])
     .map(e => {
-      const end = new Date(e.joining_date)
+      const end = new Date(e.join_date)
       end.setMonth(end.getMonth() + 6)
       const daysLeft = Math.ceil((end - today) / 86400000)
       return { ...e, end_date: end.toISOString().split('T')[0], days_left: daysLeft }
@@ -76,11 +76,21 @@ export async function getMyUnregularizedSessions(employeeId) {
   const cutoff = addDaysISO(todayISO(), -14)
   const { data, error } = await supabase
     .from('attendance_sessions')
-    .select('id, check_in, check_out, status')
+    .select('id, date, check_in')
     .eq('employee_id', employeeId)
     .gte('check_in', `${cutoff}T00:00:00.000Z`)
+    .lt('date', todayISO())
     .is('check_out', null)
     .order('check_in', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function getEmployeesForHRDashboard() {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('id, full_name, role, department, avatar_initials, email, manager_id, status, employee_type, date_of_birth')
+    .eq('status', 'active')
   if (error) throw error
   return data || []
 }

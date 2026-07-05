@@ -5,7 +5,7 @@ import { Card, Avatar, Button, Spinner, SectionTitle } from '../../components/ui
 import { C, LEAVE_TYPES, ATTENDANCE_STATUSES } from '../../lib/constants'
 import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
-import { getAllLeaveRequests, updateLeaveStatus, getAllEmployees, getAnnouncements } from '../../lib/api'
+import { getAllLeaveRequests, updateLeaveStatus, getAnnouncements } from '../../lib/api'
 import { notifyLeaveDecision } from '../../lib/api.notifications'
 import { todayISO, getTeamAttendanceByDate, getHolidays } from '../../lib/api.attendance'
 import {
@@ -13,6 +13,7 @@ import {
   getPendingTransfersForHR,
   getExpiringCertificationsForHR,
   getProbationEndingSoon,
+  getEmployeesForHRDashboard,
 } from '../../lib/api.dashboard'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -172,11 +173,12 @@ export default function AdminLandingPage() {
   const [expiringCerts,   setExpiringCerts]   = useState([])
   const [probationEnding, setProbationEnding] = useState([])
   const [loading,         setLoading]         = useState(true)
+  const [loadError,       setLoadError]       = useState(null)
 
   useEffect(() => {
     Promise.all([
       getAllLeaveRequests(),
-      getAllEmployees(),
+      getEmployeesForHRDashboard(),
       getTeamAttendanceByDate(todayISO()),
       getHolidays(year),
       getAnnouncements(),
@@ -194,6 +196,9 @@ export default function AdminLandingPage() {
       setPendingTransfers(transfers)
       setExpiringCerts(certs)
       setProbationEnding(probation)
+    }).catch(err => {
+      console.error('HR dashboard load failed:', err)
+      setLoadError(err.message || 'Failed to load dashboard data.')
     }).finally(() => setLoading(false))
   }, [])
 
@@ -210,6 +215,15 @@ export default function AdminLandingPage() {
   if (loading) return (
     <AppShell title="HR Dashboard">
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size={36} /></div>
+    </AppShell>
+  )
+
+  if (loadError) return (
+    <AppShell title="HR Dashboard">
+      <Card style={{ padding: '24px', borderLeft: `4px solid ${C.accent}`, marginTop: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.accent, marginBottom: 4 }}>Failed to load dashboard</div>
+        <div style={{ fontSize: 12, color: C.textMid }}>{loadError}</div>
+      </Card>
     </AppShell>
   )
 
