@@ -1,24 +1,12 @@
 import { C, FONTS } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import NotificationBell from './NotificationBell'
-import { useEffect } from 'react'
-import { runDailyChecks } from '../../lib/api.notifications'
 import { useResponsive } from '../../lib/responsive'
 
 export default function TopBar({ title, subtitle }) {
   const { employee, isHR } = useAuth()
   const r = useResponsive()
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-
-  useEffect(() => {
-    if (!employee || !isHR) return
-    const lastRun = sessionStorage.getItem('dailyChecksRun')
-    const todayStr = new Date().toISOString().split('T')[0]
-    if (lastRun === todayStr) return
-    runDailyChecks(employee.id)
-      .then(() => sessionStorage.setItem('dailyChecksRun', todayStr))
-      .catch(() => {})
-  }, [employee, isHR])
 
   return (
     <header style={{
