@@ -153,6 +153,82 @@ BEGIN
     END LOOP;
   END LOOP;
 
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 4: INTERNSHIP ENDING — 14d and 3d before end date
+  -- Recipients: HR/Admin + employee's manager
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT id, full_name, internship_end_date, manager_id
+    FROM employees
+    WHERE status = 'active'
+      AND internship_end_date IS NOT NULL
+      AND internship_end_date IN (today + 14, today + 3)
+  LOOP
+    DECLARE
+      stage     TEXT := CASE WHEN r.internship_end_date = today + 14 THEN '14d' ELSE '3d' END;
+      days_left INT  := r.internship_end_date - today;
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees
+        WHERE status = 'active' AND role_type IN ('hr', 'admin')
+        UNION
+        SELECT id FROM employees
+        WHERE id = r.manager_id AND status = 'active'
+      LOOP
+        dedup_key := 'lifecycle:internship_ending:' || stage || ':' || r.id::text || ':' || r.internship_end_date::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '📋 Internship Ending in ' || days_left || ' days — ' || r.full_name,
+            r.full_name || '''s internship ends on ' || to_char(r.internship_end_date, 'DD Mon YYYY') || '. Please action contract extension or offboarding.',
+            jsonb_build_object('event_type', 'internship_ending', 'stage', stage, 'subject_employee_id', r.id, 'end_date', r.internship_end_date)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'internship_ending', r.id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 5: PROBATION ENDING / CONFIRMATION DUE — 14d and 3d before
+  -- Recipients: HR/Admin + employee's manager
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT id, full_name, probation_end_date, manager_id
+    FROM employees
+    WHERE status = 'active'
+      AND probation_end_date IS NOT NULL
+      AND probation_end_date IN (today + 14, today + 3)
+  LOOP
+    DECLARE
+      stage     TEXT := CASE WHEN r.probation_end_date = today + 14 THEN '14d' ELSE '3d' END;
+      days_left INT  := r.probation_end_date - today;
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees
+        WHERE status = 'active' AND role_type IN ('hr', 'admin')
+        UNION
+        SELECT id FROM employees
+        WHERE id = r.manager_id AND status = 'active'
+      LOOP
+        dedup_key := 'lifecycle:probation_ending:' || stage || ':' || r.id::text || ':' || r.probation_end_date::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '📋 Probation Ending in ' || days_left || ' days — ' || r.full_name,
+            r.full_name || '''s probation ends on ' || to_char(r.probation_end_date, 'DD Mon YYYY') || '. Confirmation decision required.',
+            jsonb_build_object('event_type', 'probation_ending', 'stage', stage, 'subject_employee_id', r.id, 'end_date', r.probation_end_date)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'probation_ending', r.id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
 -- (continued in later tasks)
 END;
 $$;
