@@ -360,6 +360,149 @@ BEGIN
     END;
   END LOOP;
 
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 9: LEAVE ENDING — fire on to_date (last day of leave)
+  -- "Back to work tomorrow" reminder to the employee
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT lr.id, lr.employee_id, lr.to_date, lr.leave_type
+    FROM leave_requests lr
+    WHERE lr.status = 'approved'
+      AND lr.to_date = today
+  LOOP
+    dedup_key := 'lifecycle:leave_ending:' || r.id::text || ':' || r.employee_id::text;
+    IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+      INSERT INTO notifications (employee_id, type, title, message, metadata)
+      VALUES (
+        r.employee_id, 'lifecycle_reminder',
+        '👋 Back to work tomorrow!',
+        'Your ' || r.leave_type || ' leave ends today. See you tomorrow! 🙌',
+        jsonb_build_object('event_type', 'leave_ending', 'leave_request_id', r.id, 'leave_type', r.leave_type, 'to_date', r.to_date)
+      );
+      INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+      VALUES (dedup_key, 'leave_ending', r.employee_id);
+    END IF;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 10: AGING LEAVE APPROVAL — 3d and 7d waiting
+  -- leave_requests has no manager stage; all pending leave → HR/Admin
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT lr.id, lr.employee_id, lr.created_at, lr.leave_type, lr.from_date, lr.to_date,
+           e.full_name AS employee_name
+    FROM leave_requests lr
+    JOIN employees e ON e.id = lr.employee_id
+    WHERE lr.status = 'pending'
+      AND (today - lr.created_at::date) IN (3, 7)
+  LOOP
+    DECLARE
+      wait_days INT  := today - r.created_at::date;
+      stage     TEXT := wait_days::text || 'd';
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees WHERE status = 'active' AND role_type IN ('hr', 'admin')
+      LOOP
+        dedup_key := 'lifecycle:leave_aging:' || stage || ':' || r.id::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '⏰ Leave request waiting ' || wait_days || ' days — ' || r.employee_name,
+            r.employee_name || '''s ' || r.leave_type || ' leave (' || to_char(r.from_date, 'DD Mon') || '–' || to_char(r.to_date, 'DD Mon YYYY') || ') has been pending for ' || wait_days || ' days.',
+            jsonb_build_object('event_type', 'leave_aging', 'stage', stage, 'leave_request_id', r.id, 'days_waiting', wait_days)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'leave_aging', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 11: AGING REGULARIZATION APPROVAL — 3d and 7d waiting
+  -- Stage-aware: pending_manager → manager; pending_admin → HR/Admin
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT arr.id, arr.employee_id, arr.submitted_at, arr.status,
+           e.full_name AS employee_name, e.manager_id
+    FROM attendance_regularization_requests arr
+    JOIN employees e ON e.id = arr.employee_id
+    WHERE arr.status IN ('pending_manager', 'pending_admin')
+      AND (today - arr.submitted_at::date) IN (3, 7)
+  LOOP
+    DECLARE
+      wait_days INT  := today - r.submitted_at::date;
+      stage     TEXT := wait_days::text || 'd';
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees
+        WHERE
+          CASE
+            WHEN r.status = 'pending_manager'
+              THEN id = r.manager_id AND status = 'active'
+            ELSE
+              status = 'active' AND role_type IN ('hr', 'admin')
+          END
+      LOOP
+        dedup_key := 'lifecycle:reg_aging:' || stage || ':' || r.id::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '⏰ Regularization waiting ' || wait_days || ' days — ' || r.employee_name,
+            r.employee_name || '''s attendance regularization request has been pending for ' || wait_days || ' days. Please review.',
+            jsonb_build_object('event_type', 'reg_aging', 'stage', stage, 'request_id', r.id, 'days_waiting', wait_days, 'current_status', r.status)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'reg_aging', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 12: AGING TRANSFER APPROVAL — 3d and 7d waiting
+  -- Stage-aware: pending_target → to_manager; pending_hr → HR/Admin
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT mtr.id, mtr.employee_id, mtr.created_at, mtr.status, mtr.to_manager_id,
+           e.full_name AS employee_name
+    FROM manager_transfer_requests mtr
+    JOIN employees e ON e.id = mtr.employee_id
+    WHERE mtr.status IN ('pending_target', 'pending_hr')
+      AND (today - mtr.created_at::date) IN (3, 7)
+  LOOP
+    DECLARE
+      wait_days INT  := today - r.created_at::date;
+      stage     TEXT := wait_days::text || 'd';
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees
+        WHERE
+          CASE
+            WHEN r.status = 'pending_target'
+              THEN id = r.to_manager_id AND status = 'active'
+            ELSE
+              status = 'active' AND role_type IN ('hr', 'admin')
+          END
+      LOOP
+        dedup_key := 'lifecycle:transfer_aging:' || stage || ':' || r.id::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '⏰ Transfer request waiting ' || wait_days || ' days — ' || r.employee_name,
+            'A manager transfer request for ' || r.employee_name || ' has been pending for ' || wait_days || ' days. Please review.',
+            jsonb_build_object('event_type', 'transfer_aging', 'stage', stage, 'request_id', r.id, 'days_waiting', wait_days, 'current_status', r.status)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'transfer_aging', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
 -- (continued in later tasks)
 END;
 $$;
