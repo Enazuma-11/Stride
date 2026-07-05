@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../../components/layout/AppShell'
-import { Card, Avatar, Button, Badge, Tag, Spinner, EmptyState, SectionTitle } from '../../components/ui'
+import { Card, Avatar, Button, Spinner, SectionTitle } from '../../components/ui'
 import { C, LEAVE_TYPES, ATTENDANCE_STATUSES } from '../../lib/constants'
 import { useResponsive, cols } from '../../lib/responsive'
 import { useAuth } from '../../context/AuthContext'
