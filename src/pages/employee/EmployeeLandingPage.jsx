@@ -131,16 +131,19 @@ export default function EmployeeLandingPage() {
 
   useEffect(() => {
     if (!employee) return
+    const safe = (label, promise, fallback) =>
+      promise.catch(err => { console.error(`[Dashboard] ${label} failed:`, err); return fallback })
+
     Promise.all([
-      getMyLeaveBalances(employee.id),
-      getMyLeaveRequests(employee.id),
-      getAnnouncements(),
-      getTodayAttendance(employee.id),
-      getHolidays(year),
-      getWeeklyHours(employee.id, getWeekStart(todayISO())),
-      getUpcomingApprovedLeaves(),
-      getMyUnregularizedSessions(employee.id),
-      getMyExpiringCertifications(employee.id),
+      safe('getMyLeaveBalances',       getMyLeaveBalances(employee.id),                    []),
+      safe('getMyLeaveRequests',        getMyLeaveRequests(employee.id),                    []),
+      safe('getAnnouncements',          getAnnouncements(),                                 []),
+      safe('getTodayAttendance',        getTodayAttendance(employee.id),                    null),
+      safe('getHolidays',               getHolidays(year),                                  []),
+      safe('getWeeklyHours',            getWeeklyHours(employee.id, getWeekStart(todayISO())), null),
+      safe('getUpcomingApprovedLeaves', getUpcomingApprovedLeaves(),                        []),
+      safe('getMyUnregularizedSessions',getMyUnregularizedSessions(employee.id),            []),
+      safe('getMyExpiringCertifications',getMyExpiringCertifications(employee.id),          []),
     ]).then(([bal, req, ann, att, hols, wk, upcoming, unreg, certs]) => {
       setBalances(bal)
       setMyRequests(req)
@@ -151,9 +154,6 @@ export default function EmployeeLandingPage() {
       setUpcomingLeaves(upcoming)
       setUnregularized(unreg)
       setExpiringCerts(certs)
-    }).catch(err => {
-      console.error('Employee dashboard load failed:', err)
-      setLoadError(err.message || 'Failed to load dashboard data.')
     }).finally(() => setLoading(false))
   }, [employee])
 
