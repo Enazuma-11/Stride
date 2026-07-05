@@ -73,13 +73,14 @@ export async function getProbationEndingSoon() {
 }
 
 export async function getMyUnregularizedSessions(employeeId) {
-  const cutoff = addDaysISO(todayISO(), -14)
+  const today = todayISO()
+  const cutoff = addDaysISO(today, -14)
   const { data, error } = await supabase
     .from('attendance_sessions')
-    .select('id, date, check_in')
+    .select('id, check_in')
     .eq('employee_id', employeeId)
     .gte('check_in', `${cutoff}T00:00:00.000Z`)
-    .lt('date', todayISO())
+    .lt('check_in', `${today}T00:00:00.000Z`)
     .is('check_out', null)
     .order('check_in', { ascending: false })
   if (error) throw error

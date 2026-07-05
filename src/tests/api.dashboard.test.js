@@ -199,7 +199,7 @@ describe('getProbationEndingSoon', () => {
 // ── getMyUnregularizedSessions ────────────────────────────────────────────────
 describe('getMyUnregularizedSessions', () => {
   it('returns open sessions for the employee', async () => {
-    const raw = [{ id: 's1', date: '2026-07-03', check_in: '2026-07-03T09:00:00Z' }]
+    const raw = [{ id: 's1', check_in: '2026-07-03T09:00:00Z' }]
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
