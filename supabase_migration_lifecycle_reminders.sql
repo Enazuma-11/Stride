@@ -503,6 +503,85 @@ BEGIN
     END;
   END LOOP;
 
--- (continued in later tasks)
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 13: HOLIDAY REMINDER — 3 days before, all active employees
+  -- (replaces the page-load holiday-upcoming broadcast)
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT id, name, date, type
+    FROM holidays
+    WHERE date = today + 3
+  LOOP
+    FOR recipient IN
+      SELECT id FROM employees WHERE status = 'active'
+    LOOP
+      dedup_key := 'lifecycle:holiday_upcoming:' || r.id::text || ':' || recipient.id::text;
+      IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+        INSERT INTO notifications (employee_id, type, title, message, metadata)
+        VALUES (
+          recipient.id, 'lifecycle_reminder',
+          '🎉 ' || r.name || ' in 3 days',
+          r.name || ' is on ' || to_char(r.date, 'Day, DD Month YYYY') || '. ' ||
+          CASE WHEN r.type = 'mandatory' THEN 'Mandatory holiday.'
+               WHEN r.type = 'optional'  THEN 'Optional holiday — check if you opted in.'
+               ELSE '' END,
+          jsonb_build_object('event_type', 'holiday_upcoming', 'holiday_id', r.id, 'date', r.date, 'holiday_type', r.type)
+        );
+        INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+        VALUES (dedup_key, 'holiday_upcoming', NULL);
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 14: MONTHLY REGULARIZATION NUDGE — day 25 to month-end
+  -- Once per employee per month (dedup key = year-month + employee)
+  -- (replaces the page-load regularization reminder)
+  -- ═══════════════════════════════════════════════════════════════
+  IF EXTRACT(DAY FROM today) >= 25 THEN
+    DECLARE
+      month_start DATE := date_trunc('month', today)::date;
+      year_month  TEXT := to_char(today, 'YYYY-MM');
+    BEGIN
+      FOR r IN
+        SELECT
+          a.employee_id,
+          COUNT(*) AS unresolved_count
+        FROM attendance a
+        WHERE a.date >= month_start
+          AND a.date <= today
+          AND a.status IN ('half_day', 'absent')
+          AND NOT EXISTS (
+            SELECT 1
+            FROM attendance_regularization_items ari
+            JOIN attendance_regularization_requests arr ON arr.id = ari.request_id
+            WHERE arr.employee_id = a.employee_id
+              AND ari.date = a.date
+          )
+        GROUP BY a.employee_id
+        HAVING COUNT(*) > 0
+      LOOP
+        dedup_key := 'lifecycle:reg_nudge:' || year_month || ':' || r.employee_id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            r.employee_id, 'lifecycle_reminder',
+            'Attendance Regularization Reminder',
+            'You have ' || r.unresolved_count || ' day(s) this month that may need regularization — submit before month-end.',
+            jsonb_build_object('event_type', 'reg_nudge', 'month', year_month, 'count', r.unresolved_count)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'reg_nudge', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END IF;
+
 END;
 $$;
+
+-- ─── VERIFY FUNCTION EXISTS ───────────────────────────────────
+SELECT routine_name
+FROM information_schema.routines
+WHERE routine_name = 'run_lifecycle_reminders'
+  AND routine_schema = 'public';
