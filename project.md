@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-05 (Lifecycle Reminders deployed)
+**Last updated:** 2026-07-05 (Dashboard Redesign deployed)
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`3b65cad` — Retire page-load runDailyChecks — lifecycle reminders now handled by scheduled SQL job
+`3541dec` — Make employee dashboard resilient: isolate each fetch failure
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -28,6 +28,18 @@
 - (nothing in progress)
 
 ## RECENTLY COMPLETED
+
+### Dashboard Redesign (2026-07-05) ✅ DEPLOYED
+Spec: `docs/superpowers/specs/2026-07-05-dashboard-redesign-design.md`
+Plan: `docs/superpowers/plans/2026-07-05-dashboard-redesign.md`
+- Split monolithic `DashboardPage.jsx` (549 lines) into a thin ~26-line router + two focused pages
+- `AdminLandingPage.jsx` — HR/Admin command center: unified action inbox (leaves + regularizations + transfers + expiring certs + probation) sorted by urgency with color-coded borders; team health section (today's attendance, team breakdown by type/dept, upcoming events + birthdays, announcements)
+- `EmployeeLandingPage.jsx` — employee dashboard: personal pulse (4 stat cards: today's status, earned leave left, weekly hours, pending count); smart prompts (contextual, only shown when relevant — regularize attendance, pending leave, expiring cert, probation end, upcoming holiday); supporting info (leave balances + recent requests + holidays + announcements + upcoming team leave)
+- `api.dashboard.js` — 7 new data-layer functions: `getPendingRegularizationsForHR`, `getPendingTransfersForHR`, `getExpiringCertificationsForHR`, `getProbationEndingSoon`, `getEmployeesForHRDashboard`, `getMyUnregularizedSessions`, `getMyExpiringCertifications`
+- Each dashboard useEffect uses fault-tolerant `safe()` wrapper — failed queries degrade to empty fallback rather than blanking the page
+- No new routes, no new migrations, no changes to existing API files
+- 232 tests passing (up from 214 — 18 new tests for api.dashboard.js)
+- Vitest now excludes `.claude/worktrees/**` to prevent stale test pollution
 
 ### Lifecycle Reminders Engine (2026-07-05) ✅ DEPLOYED
 Spec: `docs/superpowers/specs/2026-07-04-lifecycle-reminders-design.md`
@@ -262,8 +274,8 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 - Install prompt (Android auto, iOS manual)
 
 ### ✅ Tests
-- 214 tests across 9 files — all passing
-- api.attendance, api.leave, api.payslips, api.announcements, constants, validation, api.managerTransfers, api.holidayOptins, api.leaveBalances
+- 232 tests across 10 files — all passing
+- api.attendance, api.leave, api.payslips, api.announcements, constants, validation, api.managerTransfers, api.holidayOptins, api.leaveBalances, api.dashboard
 
 ---
 
@@ -356,6 +368,7 @@ src/
     api.okrs.js                    — cycles, objectives, key results, checkins, recalcObjectiveProgress
     api.policies.js                — getPolicies, createPolicy, uploadPolicyFile (createSignedUrl), publishPolicy, acknowledgePolicy
     api.chat.js                    — channels, DMs, messages, reactions, uploadChatFile
+    api.dashboard.js               — dashboard-specific fetchers (HR: regularizations, transfers, expiring certs, probation; employee: unregularized sessions, expiring certs; + getEmployeesForHRDashboard)
     email.notifications.js         — MSG91 (awaiting domain)
   components/
     layout/
@@ -378,8 +391,10 @@ src/
       PerformancePage.jsx          — OKRs, progress rings, check-ins
       PolicyCentrePage.jsx         — categories load in modal, upload, publish, acknowledge
       ChatPage.jsx                 — channels+DMs, files, reactions, realtime
-      DashboardPage.jsx            — stats, leave balances, attendance, announcements
+      DashboardPage.jsx            — ~26-line router: OnboardingWizard + isHR ? AdminLandingPage : EmployeeLandingPage
+      EmployeeLandingPage.jsx      — personal pulse, smart prompts, supporting info (leave/holidays/announcements)
     hr/
+      AdminLandingPage.jsx         — action inbox (all pending workflows), team health (attendance/breakdown/events)
       HRDashboardPage.jsx          — pending leaves (approve/reject), stats, attendance
       HRLeaveManagementPage.jsx    — pending requests, balances, adjust, record offline
       HRPayslipsPage.jsx           — generate, bank auto-fill, preview, download
