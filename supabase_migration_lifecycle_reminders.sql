@@ -229,6 +229,137 @@ BEGIN
     END;
   END LOOP;
 
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 6: PASSPORT EXPIRY — 30d, 7d, and on expiry day
+  -- Recipients: the employee + HR/Admin
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT ec.employee_id, e.full_name, ec.passport_expiry_date
+    FROM employee_compliance ec
+    JOIN employees e ON e.id = ec.employee_id
+    WHERE e.status = 'active'
+      AND ec.passport_expiry_date IS NOT NULL
+      AND ec.passport_expiry_date IN (today + 30, today + 7, today)
+  LOOP
+    DECLARE
+      stage     TEXT := CASE WHEN r.passport_expiry_date = today + 30 THEN '30d'
+                             WHEN r.passport_expiry_date = today + 7  THEN '7d'
+                             ELSE '0d' END;
+      days_left INT  := r.passport_expiry_date - today;
+      urgency   TEXT := CASE WHEN days_left = 0 THEN 'expires TODAY'
+                             ELSE 'expires in ' || days_left || ' days' END;
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees WHERE id = r.employee_id
+        UNION
+        SELECT id FROM employees WHERE status = 'active' AND role_type IN ('hr', 'admin')
+      LOOP
+        dedup_key := 'lifecycle:passport_expiry:' || stage || ':' || r.employee_id::text || ':' || r.passport_expiry_date::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '🛂 Passport ' || urgency || CASE WHEN recipient.id = r.employee_id THEN '' ELSE ' — ' || r.full_name END,
+            CASE WHEN recipient.id = r.employee_id
+              THEN 'Your passport ' || urgency || ' (' || to_char(r.passport_expiry_date, 'DD Mon YYYY') || '). Please renew in time.'
+              ELSE r.full_name || '''s passport ' || urgency || ' on ' || to_char(r.passport_expiry_date, 'DD Mon YYYY') || '.'
+            END,
+            jsonb_build_object('event_type', 'passport_expiry', 'stage', stage, 'subject_employee_id', r.employee_id, 'expiry_date', r.passport_expiry_date)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'passport_expiry', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 7: VISA EXPIRY — 30d, 7d, and on expiry day
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT ec.employee_id, e.full_name, ec.visa_expiry_date, ec.visa_type
+    FROM employee_compliance ec
+    JOIN employees e ON e.id = ec.employee_id
+    WHERE e.status = 'active'
+      AND ec.visa_expiry_date IS NOT NULL
+      AND ec.visa_expiry_date IN (today + 30, today + 7, today)
+  LOOP
+    DECLARE
+      stage     TEXT := CASE WHEN r.visa_expiry_date = today + 30 THEN '30d'
+                             WHEN r.visa_expiry_date = today + 7  THEN '7d'
+                             ELSE '0d' END;
+      days_left INT  := r.visa_expiry_date - today;
+      urgency   TEXT := CASE WHEN days_left = 0 THEN 'expires TODAY'
+                             ELSE 'expires in ' || days_left || ' days' END;
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees WHERE id = r.employee_id
+        UNION
+        SELECT id FROM employees WHERE status = 'active' AND role_type IN ('hr', 'admin')
+      LOOP
+        dedup_key := 'lifecycle:visa_expiry:' || stage || ':' || r.employee_id::text || ':' || r.visa_expiry_date::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '🛂 Visa ' || urgency || CASE WHEN recipient.id = r.employee_id THEN '' ELSE ' — ' || r.full_name END,
+            CASE WHEN recipient.id = r.employee_id
+              THEN 'Your ' || COALESCE(r.visa_type, '') || ' visa ' || urgency || ' (' || to_char(r.visa_expiry_date, 'DD Mon YYYY') || ').'
+              ELSE r.full_name || '''s visa ' || urgency || ' on ' || to_char(r.visa_expiry_date, 'DD Mon YYYY') || '.'
+            END,
+            jsonb_build_object('event_type', 'visa_expiry', 'stage', stage, 'subject_employee_id', r.employee_id, 'expiry_date', r.visa_expiry_date)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'visa_expiry', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 8: CERTIFICATION EXPIRY — 30d, 7d, and on expiry day
+  -- (employee_documents has no expiry_date; employee_certifications does)
+  -- ═══════════════════════════════════════════════════════════════
+  FOR r IN
+    SELECT ec.employee_id, e.full_name, ec.title AS cert_title, ec.expiry_date, ec.id AS cert_id
+    FROM employee_certifications ec
+    JOIN employees e ON e.id = ec.employee_id
+    WHERE e.status = 'active'
+      AND ec.expiry_date IS NOT NULL
+      AND ec.expiry_date IN (today + 30, today + 7, today)
+  LOOP
+    DECLARE
+      stage     TEXT := CASE WHEN r.expiry_date = today + 30 THEN '30d'
+                             WHEN r.expiry_date = today + 7  THEN '7d'
+                             ELSE '0d' END;
+      days_left INT  := r.expiry_date - today;
+      urgency   TEXT := CASE WHEN days_left = 0 THEN 'expires TODAY'
+                             ELSE 'expires in ' || days_left || ' days' END;
+    BEGIN
+      FOR recipient IN
+        SELECT id FROM employees WHERE id = r.employee_id
+        UNION
+        SELECT id FROM employees WHERE status = 'active' AND role_type IN ('hr', 'admin')
+      LOOP
+        dedup_key := 'lifecycle:cert_expiry:' || stage || ':' || r.cert_id::text || ':' || r.expiry_date::text || ':' || recipient.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            recipient.id, 'lifecycle_reminder',
+            '📜 ' || r.cert_title || ' ' || urgency || CASE WHEN recipient.id = r.employee_id THEN '' ELSE ' — ' || r.full_name END,
+            CASE WHEN recipient.id = r.employee_id
+              THEN 'Your certification "' || r.cert_title || '" ' || urgency || ' (' || to_char(r.expiry_date, 'DD Mon YYYY') || ').'
+              ELSE r.full_name || '''s certification "' || r.cert_title || '" ' || urgency || ' on ' || to_char(r.expiry_date, 'DD Mon YYYY') || '.'
+            END,
+            jsonb_build_object('event_type', 'cert_expiry', 'stage', stage, 'subject_employee_id', r.employee_id, 'cert_id', r.cert_id, 'expiry_date', r.expiry_date)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'cert_expiry', r.employee_id);
+        END IF;
+      END LOOP;
+    END;
+  END LOOP;
+
 -- (continued in later tasks)
 END;
 $$;
