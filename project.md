@@ -1,5 +1,5 @@
 # STRIDE — PROJECT REFERENCE
-**Last updated:** 2026-07-05 (Dashboard Redesign deployed)
+**Last updated:** 2026-07-06 (Lifecycle Notifications Port deployed)
 **Update this file every 3-4 prompts**
 
 ---
@@ -19,7 +19,7 @@
 ---
 
 ## LATEST PUSHED COMMIT
-`3541dec` — Make employee dashboard resilient: isolate each fetch failure
+`4d2a65a` — Fix: make lifecycle_reminder_log policy idempotent (DROP IF EXISTS before CREATE)
 
 ## LOCALLY BUILT (NOT YET PUSHED)
 - (nothing pending — working tree matches origin/main)
@@ -28,6 +28,19 @@
 - (nothing in progress)
 
 ## RECENTLY COMPLETED
+
+### Lifecycle Notifications Port (2026-07-06) ✅ DEPLOYED
+Spec: `docs/superpowers/specs/2026-07-06-lifecycle-notifications-port-design.md`
+Plan: `docs/superpowers/plans/2026-07-06-lifecycle-notifications-port.md`
+- Ported two behaviors that were dropped when `runDailyChecks` was retired into the SQL lifecycle engine
+- **Event 15 (holiday opt-in)** added to the existing `run_lifecycle_reminders()` function: window-open broadcast to all active employees once per H1/H2 window (dedup key `lifecycle:holiday_optin_open:<window>:<id>`); closing-soon reminder to non-submitters only in the last 4 days (dedup key `lifecycle:holiday_optin_closing:<window>:<id>`). Checks `holiday_optin_submissions` to determine who has responded. Dormant outside Jan 1–14 and Jul 1–14.
+- **`run_weekly_attendance_report(p_as_of DATE DEFAULT NULL)`** — new standalone function on a Friday 6:30 PM IST cron (`0 13 * * 5` UTC). HR/Admin get `weekly_report_team` notification; all other employees get `weekly_report_personal`. Dedup key `lifecycle:weekly_report:<IYYY-IW>:<id>`. Day guard rejects non-Friday calls. `p_as_of` parameter allows simulating a Friday for manual testing.
+- Both use `SECURITY DEFINER SET search_path = public, pg_temp`, IST dates, and the shared `lifecycle_reminder_log` dedup table — consistent with the rest of the engine
+- No JavaScript changes; no new tables; `lifecycle_reminder` type reused — notifications surface in the existing `NotificationBell`
+- Fixed a pre-existing idempotency gap: added `DROP POLICY IF EXISTS` before `CREATE POLICY "lifecycle_log_hr_read"` so the migration can be safely re-run
+- `supabase_migration_lifecycle_reminders.sql` ✅ re-run in both Production and Test (Event 15 active)
+- `supabase_migration_weekly_attendance_report.sql` ✅ run in both Production and Test; Friday cron `weekly_attendance_report_friday` active in both (`jobid=2`)
+- 232 tests passing (SQL-only change — no test additions needed)
 
 ### Dashboard Redesign (2026-07-05) ✅ DEPLOYED
 Spec: `docs/superpowers/specs/2026-07-05-dashboard-redesign-design.md`
@@ -51,7 +64,7 @@ Plan: `docs/superpowers/plans/2026-07-04-lifecycle-reminders.md`
 - SECURITY DEFINER function with `SET search_path = public, pg_temp` — bypasses RLS safely to cross-query all employees
 - Retired the page-load `runDailyChecks` trigger from `TopBar.jsx` and deleted `runDailyChecks`, `shouldSendMonthlyRegularizationReminder`, `workingDaysInRange` from `api.notifications.js`
 - 214 tests passing (net reduction from 236 — deleted the 22 stubs testing retired functions; all real coverage intact)
-- ⚠️ **Two behaviors not yet ported**: weekly attendance report notification (Mondays) and holiday opt-in window notifications — these were in runDailyChecks but not included in the lifecycle spec; follow-up task queued
+- Both remaining behaviors (weekly attendance report + holiday opt-in window notifications) ported as Event 15 + `run_weekly_attendance_report()` — see Lifecycle Notifications Port above
 - `supabase_migration_lifecycle_reminders.sql` ✅ run in both Production and Test; cron job active in both
 
 ### Whole-Project Audit + Bug Fixes (2026-07-04)
