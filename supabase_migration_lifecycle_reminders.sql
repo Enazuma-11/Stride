@@ -577,6 +577,72 @@ BEGIN
     END;
   END IF;
 
+  -- ═══════════════════════════════════════════════════════════════
+  -- EVENT 15: HOLIDAY OPT-IN WINDOW NOTIFICATIONS
+  -- A. Window-open broadcast — once per employee per window (self-heals if first day missed)
+  -- B. Closing-soon reminder — only to non-submitters, last 4 days, once per person
+  -- Dormant on all days outside Jan 1–14 and Jul 1–14.
+  -- ═══════════════════════════════════════════════════════════════
+  DECLARE
+    v_window_label     TEXT := NULL;
+    v_closes_on        DATE := NULL;
+    v_days_until_close INT  := 0;
+  BEGIN
+    IF EXTRACT(MONTH FROM today) = 1 AND EXTRACT(DAY FROM today) BETWEEN 1 AND 14 THEN
+      v_window_label := EXTRACT(YEAR FROM today)::text || '-H1';
+      v_closes_on    := (EXTRACT(YEAR FROM today)::text || '-01-14')::date;
+    ELSIF EXTRACT(MONTH FROM today) = 7 AND EXTRACT(DAY FROM today) BETWEEN 1 AND 14 THEN
+      v_window_label := EXTRACT(YEAR FROM today)::text || '-H2';
+      v_closes_on    := (EXTRACT(YEAR FROM today)::text || '-07-14')::date;
+    END IF;
+
+    IF v_window_label IS NOT NULL THEN
+      v_days_until_close := v_closes_on - today;
+
+      FOR r IN
+        SELECT id FROM employees WHERE status = 'active'
+      LOOP
+        -- A. Window-open broadcast — once per employee per window
+        dedup_key := 'lifecycle:holiday_optin_open:' || v_window_label || ':' || r.id::text;
+        IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+          INSERT INTO notifications (employee_id, type, title, message, metadata)
+          VALUES (
+            r.id, 'lifecycle_reminder',
+            'Holiday Opt-In Window Open',
+            'You can now pick your optional holidays for the year. Submit your picks by ' ||
+              to_char(v_closes_on, 'DD Mon YYYY') || ' in Leave Management → Holiday Calendar.',
+            jsonb_build_object('event_type', 'holiday_optin_open', 'window', v_window_label, 'closes_on', v_closes_on)
+          );
+          INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+          VALUES (dedup_key, 'holiday_optin_open', r.id);
+        END IF;
+
+        -- B. Closing-soon — only to non-submitters, only in last 4 days
+        IF v_days_until_close BETWEEN 0 AND 3 THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM holiday_optin_submissions hos
+            WHERE hos.employee_id = r.id AND hos.window_label = v_window_label
+          ) THEN
+            dedup_key := 'lifecycle:holiday_optin_closing:' || v_window_label || ':' || r.id::text;
+            IF NOT EXISTS (SELECT 1 FROM lifecycle_reminder_log WHERE key = dedup_key) THEN
+              INSERT INTO notifications (employee_id, type, title, message, metadata)
+              VALUES (
+                r.id, 'lifecycle_reminder',
+                'Holiday Picks Closing Soon',
+                'The holiday opt-in window closes ' || to_char(v_closes_on, 'DD Mon YYYY') ||
+                  '. Submit your optional-holiday picks before then.',
+                jsonb_build_object('event_type', 'holiday_optin_closing', 'window', v_window_label, 'closes_on', v_closes_on)
+              );
+              INSERT INTO lifecycle_reminder_log (key, event_type, employee_id)
+              VALUES (dedup_key, 'holiday_optin_closing', r.id);
+            END IF;
+          END IF;
+        END IF;
+
+      END LOOP;
+    END IF;
+  END;
+
 END;
 $$;
 
