@@ -17,6 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_reminder_log_fired_at ON lifecycle_remi
 
 ALTER TABLE lifecycle_reminder_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "lifecycle_log_hr_read" ON lifecycle_reminder_log;
 CREATE POLICY "lifecycle_log_hr_read" ON lifecycle_reminder_log
   FOR SELECT USING (current_employee_role() IN ('hr', 'admin'));
 
