@@ -283,14 +283,7 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 
 | Priority | Item | Action |
 |---|---|---|
-| 🔴 HIGH | SQL: lr_delete_own policy | Run in both Supabase: `CREATE POLICY "lr_delete_own" ON leave_requests FOR DELETE TO authenticated USING (employee_id = (SELECT id FROM employees WHERE user_id = auth.uid()));` |
-| 🔴 HIGH | SQL: supabase_migration_unpaid_leave.sql | Run in both Supabase — adds unpaid_days, paid_days columns, and get_upcoming_approved_leaves RPC (required for the Dashboard "Upcoming Leave" widget) |
-| 🔴 HIGH | SQL: supabase_migration_attendance_sessions.sql | Run in both Supabase — required for the new Attendance overhaul (multi-session check-in/out won't work until this runs) |
-| 🔴 HIGH | SQL: supabase_migration_attendance_regularization.sql | Run in both Supabase — required for the regularization request/approval workflow |
-| 🔴 HIGH | SQL: supabase_migration_hr_admin_lookup.sql | Run in both Supabase — required for HR/Admin to actually receive regularization/leave notifications (RLS was silently blocking them without this) |
-| 🔴 HIGH | SQL: supabase_migration_notifications_insert_fix.sql | Run in both Supabase — re-applies the notifications_insert RLS policy (a manager-less employee's first regularization submission hit "row violates row-level security policy" on this table) |
-| 🔴 HIGH | SQL: supabase_migration_holiday_optins.sql | Run in both Supabase — required for the new Holiday Opt-In Calendar (employees can't pick optional holidays until this runs) |
-| 🔴 HIGH | SQL: supabase_migration_manager_transfers.sql | Run in both Supabase — required for Manager Transfer Requests (adds the table + the get_team_directory RPC that Team Directory now depends on to load at all) |
+| ✅ DONE | SQL: all outstanding migrations (2026-07-06) | ✅ Run in BOTH Production and Test: lr_delete_own, unpaid_leave, attendance_sessions, attendance_regularization, hr_admin_lookup, notifications_insert_fix, holiday_optins, manager_transfers. All Attendance/Leave/Holiday/Transfer features now backed by live schema in both projects. |
 | ✅ DONE | SQL: supabase_migration_lifecycle_reminders.sql | ✅ Run in both Supabase — lifecycle_reminder_log table + run_lifecycle_reminders() function + pg_cron job active at 3:30 UTC (9 AM IST) |
 | 🟡 MED | 2FA | Enable TOTP in Supabase → Authentication → MFA |
 | 🟡 MED | MSG91 Email | Verify sportechinnolab.org domain in GoDaddy |
@@ -320,14 +313,16 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_migration_okrs.sql | ✅ |
 | supabase_migration_policy_chat.sql | ✅ |
 | policy_categories RLS (manual SQL) | ✅ |
-| lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
-| supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
+| lr_delete_own RLS (manual SQL) | ✅ (2026-07-06) |
+| supabase_migration_unpaid_leave.sql | ✅ (2026-07-06) |
 | supabase_migration_onboarding_documents_fix.sql | ✅ |
 | supabase_migration_education_docs.sql | ✅ |
-| supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
-| supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
-| supabase_migration_holiday_optins.sql | ⚠️ PENDING |
-| supabase_migration_manager_transfers.sql | ⚠️ PENDING |
+| supabase_migration_attendance_sessions.sql | ✅ (2026-07-06) |
+| supabase_migration_attendance_regularization.sql | ✅ (2026-07-06) |
+| supabase_migration_hr_admin_lookup.sql | ✅ (2026-07-06) |
+| supabase_migration_notifications_insert_fix.sql | ✅ (2026-07-06) |
+| supabase_migration_holiday_optins.sql | ✅ (2026-07-06) |
+| supabase_migration_manager_transfers.sql | ✅ (2026-07-06) |
 | supabase_migration_lifecycle_reminders.sql | ✅ DEPLOYED |
 
 ### Test (uzysmoeyrenbhpbdxled) — Status
@@ -337,16 +332,19 @@ Plan: `docs/superpowers/plans/2026-07-01-attendance-overhaul.md`
 | supabase_test_environment_schema.sql | ✅ |
 | seed_test_data.sql | ✅ |
 | policy_categories RLS (manual SQL) | ✅ |
-| lr_delete_own RLS (manual SQL) | ⚠️ PENDING |
-| supabase_migration_unpaid_leave.sql | ⚠️ PENDING |
+| lr_delete_own RLS (manual SQL) | ✅ (2026-07-06) |
+| supabase_migration_unpaid_leave.sql | ✅ (2026-07-06) |
 | supabase_migration_onboarding_documents_fix.sql | ✅ |
 | supabase_migration_employee_documents_schema_sync.sql | ✅ (Test-only fix — Production already had these columns) |
 | supabase_migration_storage_policies_test_sync.sql | ✅ (Test-only fix — Production already had these policies) |
 | supabase_migration_education_docs.sql | ✅ |
-| supabase_migration_attendance_sessions.sql | ⚠️ PENDING |
-| supabase_migration_attendance_regularization.sql | ⚠️ PENDING |
-| supabase_migration_holiday_optins.sql | ⚠️ PENDING |
-| supabase_migration_manager_transfers.sql | ⚠️ PENDING |
+| supabase_migration_attendance_sessions.sql | ✅ (2026-07-06) |
+| supabase_migration_attendance_regularization.sql | ✅ (2026-07-06) |
+| supabase_migration_hr_admin_lookup.sql | ✅ (2026-07-06) |
+| supabase_migration_notifications_insert_fix.sql | ✅ (2026-07-06) |
+| supabase_migration_holiday_optins.sql | ✅ (2026-07-06) |
+| supabase_migration_manager_transfers.sql | ✅ (2026-07-06) |
+| supabase_migration_lifecycle_reminders.sql | ⚠️ VERIFY — was only confirmed in Production; re-run in Test if cron job not active |
 
 ---
 
