@@ -58,7 +58,7 @@ function buildActionItems(leaves, regs, transfers, certs, probation) {
       urgency:     Math.max(0, 10 - age),
       borderColor: age >= 5 ? C.accent : age >= 3 ? C.amber : C.brand,
       canApprove:  false,
-      link:        '/hr/attendance',
+      link:        '/hr/attendance?tab=regularization',
       actionLabel: 'Review →',
     })
   })
@@ -74,7 +74,7 @@ function buildActionItems(leaves, regs, transfers, certs, probation) {
       urgency:     Math.max(0, 10 - age),
       borderColor: age >= 5 ? C.accent : age >= 3 ? C.amber : C.brand,
       canApprove:  false,
-      link:        '/hr/employees',
+      link:        '/hr/employees?tab=transfers',
       actionLabel: 'Review →',
     })
   })

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, Select, SectionTitle } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
@@ -661,7 +662,8 @@ export default function EmployeeManagementPage() {
   const [modal,     setModal]     = useState(null)
   const [toApprove, setToApprove] = useState(null)
   const [toast,     setToast]     = useState('')
-  const [tab, setTab] = useState('employees')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('tab') || 'employees')
   const [transferRequests, setTransferRequests] = useState([])
 
   useEffect(() => { load() }, [])

@@ -1,5 +1,6 @@
 import AttendanceOverridePanel from '../../components/AttendanceOverridePanel'
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AppShell from '../../components/layout/AppShell'
 import { Card, Avatar, Button, Spinner, EmptyState, Alert, Input, SectionTitle } from '../../components/ui'
 import { C, ATTENDANCE_STATUSES } from '../../lib/constants'
@@ -306,10 +307,11 @@ function WeeklyView({ weekStart, onWeekChange }) {
 export default function HRAttendancePage() {
   const { employee } = useAuth()
   const r = useResponsive()
+  const [searchParams] = useSearchParams()
   const now = new Date()
   const [year,      setYear]     = useState(now.getFullYear())
   const [month,     setMonth]    = useState(now.getMonth() + 1)
-  const [tab,       setTab]      = useState('today')
+  const [tab,       setTab]      = useState(searchParams.get('tab') || 'today')
   const [todayRecs, setTodayRecs]= useState([])
   const [monthRecs, setMonthRecs]= useState([])
   const [employees, setEmployees]= useState([])
