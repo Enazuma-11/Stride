@@ -5,7 +5,6 @@ import { formatTime } from '../lib/api.attendance'
 import {
   getManagerPendingItems, managerDecideItem,
   getAdminPendingItems, adminApplyItem, adminRejectItem,
-  getManagerPendingRequests,
 } from '../lib/api.attendanceRegularization'
 
 function isoToTime(iso) {
@@ -106,22 +105,15 @@ function ManagerRow({ item, reviewerId, onDone }) {
 
 export default function RegularizationQueue({ mode, reviewerId }) {
   const [items, setItems] = useState([])
-  const [pendingManagerRequests, setPendingManagerRequests] = useState([])
   const [loading, setLoading] = useState(true)
 
   async function load() {
     setLoading(true)
     try {
-      if (mode === 'admin') {
-        const [adminItems, managerQueue] = await Promise.all([
-          getAdminPendingItems(reviewerId),
-          getManagerPendingRequests(),
-        ])
-        setItems(adminItems)
-        setPendingManagerRequests(managerQueue)
-      } else {
-        setItems(await getManagerPendingItems(reviewerId))
-      }
+      const data = mode === 'admin'
+        ? await getAdminPendingItems(reviewerId)
+        : await getManagerPendingItems(reviewerId)
+      setItems(data)
     } finally { setLoading(false) }
   }
 
@@ -134,29 +126,12 @@ export default function RegularizationQueue({ mode, reviewerId }) {
       </div>
       {loading
         ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner size={24} /></div>
-        : <>
-            {items.length === 0 && pendingManagerRequests.length === 0
-              ? <EmptyState icon="✅" title="Nothing pending" />
-              : items.map(item => mode === 'admin'
-                  ? <AdminApplyRow key={item.id} item={item} reviewerId={reviewerId} onDone={load} />
-                  : <ManagerRow key={item.id} item={item} reviewerId={reviewerId} onDone={load} />
-                )
-            }
-            {mode === 'admin' && pendingManagerRequests.length > 0 && (
-              <div style={{ padding: '12px 20px', borderTop: items.length > 0 ? `1px solid ${C.border}` : 'none' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                  Awaiting Manager Approval ({pendingManagerRequests.length})
-                </div>
-                {pendingManagerRequests.map(r => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
-                    <Avatar initials={r.employee?.avatar_initials || '??'} size={28} />
-                    <div style={{ flex: 1, fontSize: 13, color: C.textMid }}>{r.employee?.full_name}</div>
-                    <span style={{ fontSize: 11, color: C.amber, fontWeight: 600, padding: '3px 10px', background: C.amberSoft, borderRadius: 20 }}>Pending manager</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+        : items.length === 0
+          ? <EmptyState icon="✅" title="Nothing pending" />
+          : items.map(item => mode === 'admin'
+              ? <AdminApplyRow key={item.id} item={item} reviewerId={reviewerId} onDone={load} />
+              : <ManagerRow key={item.id} item={item} reviewerId={reviewerId} onDone={load} />
+            )
       }
     </Card>
   )
