@@ -284,7 +284,7 @@ function MonthlySummary({ records, holidays }) {
   ]
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: r.isMobile ? 'repeat(3,1fr)' : 'repeat(6,1fr)', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
       {stats.map(s => (
         <Card key={s.label} style={{ padding: '14px 16px', borderLeft: `3px solid ${s.color}` }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: s.color, fontFamily: "'Sora',sans-serif" }}>{s.val}</div>

@@ -231,6 +231,16 @@ export async function getAdminPendingItems(excludeEmployeeId) {
   return (items || []).filter(item => item.request?.employee_id !== excludeEmployeeId)
 }
 
+export async function getManagerPendingRequests() {
+  const { data, error } = await supabase
+    .from('attendance_regularization_requests')
+    .select('id, employee_id, submitted_at, employee:employee_id(full_name, avatar_initials)')
+    .eq('status', 'pending_manager')
+    .order('submitted_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
 export async function adminApplyItem(itemId, finalCheckIn, finalCheckOut, adminId) {
   if (!finalCheckIn || !finalCheckOut) {
     throw new Error('Both check-in and check-out are required to apply this correction.')
