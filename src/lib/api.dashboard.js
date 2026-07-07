@@ -2,17 +2,10 @@ import { supabase } from './supabase'
 import { todayISO, addDaysISO } from './api.attendance'
 
 export async function getPendingRegularizationsForHR() {
-  const today = todayISO()
-  const [y, m] = today.split('-')
-  const monthStart = `${y}-${m}-01T00:00:00`
-  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate()
-  const monthEnd = `${y}-${m}-${String(lastDay).padStart(2, '0')}T23:59:59`
   const { data, error } = await supabase
     .from('attendance_regularization_requests')
     .select('id, employee_id, status, submitted_at, employee:employee_id(full_name)')
     .eq('status', 'pending_admin')
-    .gte('submitted_at', monthStart)
-    .lte('submitted_at', monthEnd)
     .order('submitted_at', { ascending: true })
   if (error) throw error
   return (data || []).map(r => ({
