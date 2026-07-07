@@ -141,18 +141,10 @@ export async function getManagerPendingItems(managerId) {
   const reportIds = (reports || []).map(r => r.id)
   if (reportIds.length === 0) return []
 
-  const today = new Date().toLocaleDateString('sv', { timeZone: 'Asia/Kolkata' })
-  const [y, m] = today.split('-')
-  const monthStart = `${y}-${m}-01`
-  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate()
-  const monthEnd = `${y}-${m}-${String(lastDay).padStart(2, '0')}`
-
   const { data: items, error } = await supabase
     .from('attendance_regularization_items')
     .select('*, request:request_id(id, employee_id, employee:employee_id(full_name, avatar_initials))')
     .eq('manager_decision', 'pending')
-    .gte('date', monthStart)
-    .lte('date', monthEnd)
     .order('date', { ascending: false })
   if (error) throw error
 
