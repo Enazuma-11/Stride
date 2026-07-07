@@ -6,11 +6,11 @@ import { useAuth } from '../../context/AuthContext'
 import {
   getAnnouncements, createAnnouncement, updateAnnouncement,
   deleteAnnouncement, toggleReaction, addComment, deleteComment,
-  ANNOUNCEMENT_CATEGORIES,
+  acknowledgeAnnouncement, ANNOUNCEMENT_CATEGORIES,
 } from '../../lib/api.announcements'
 import { supabase } from '../../lib/supabase'
 
-const EMOJIS = ['👍', '❤️', '🎉']
+const EMOJI_PICKER_SET = ['👍', '❤️', '🎉', '😂', '😮', '😢', '🔥', '👏', '🙌', '💯', '🚀', '👀', '😍', '🤔', '💪', '✅']
 
 function timeAgo(date) {
   const diff = Date.now() - new Date(date).getTime()
@@ -91,19 +91,49 @@ function PostForm({ onPosted, editData, onClose }) {
 }
 
 // ── Single announcement card ──────────────────────────────────────────────────
-function AnnouncementCard({ ann, currentEmployee, isHR, onUpdate }) {
+function AnnouncementCard({ ann, currentEmployee, isHR, onUpdate, allEmployees }) {
   const [showComments, setShowComments] = useState(false)
   const [comment,      setComment]      = useState('')
   const [posting,      setPosting]      = useState(false)
   const [editing,      setEditing]      = useState(false)
+  const [acking,          setAcking]          = useState(false)
+  const [showAcks,        setShowAcks]        = useState(false)
+  const [showPicker,      setShowPicker]      = useState(false)
+  const [hoveredReaction, setHoveredReaction] = useState(null)
+  const pickerRef = useRef(null)
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    if (!showPicker) return
+    function handleOutside(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowPicker(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showPicker])
+
+  const hasAcknowledged = ann.acknowledgements?.some(a => a.employee_id === currentEmployee?.id)
+  const ackCount = ann.acknowledgements?.length || 0
+  const acknowledgedIds = new Set(ann.acknowledgements?.map(a => a.employee_id) || [])
+  const notAcknowledged = (allEmployees || []).filter(e => !acknowledgedIds.has(e.id))
+
+  async function handleAcknowledge() {
+    setAcking(true)
+    try {
+      await acknowledgeAnnouncement(ann.id, currentEmployee.id)
+      onUpdate()
+    } finally { setAcking(false) }
+  }
 
   const cat = ANNOUNCEMENT_CATEGORIES.find(c => c.value === ann.category) || ANNOUNCEMENT_CATEGORIES[0]
 
-  // Group reactions
-  const reactionCounts = EMOJIS.map(emoji => ({
+  // Build reaction counts from actual data (any emoji, not just preset 3)
+  const reactedEmojis = [...new Set(ann.reactions?.map(r => r.emoji) || [])]
+  const reactionCounts = reactedEmojis.map(emoji => ({
     emoji,
     count: ann.reactions?.filter(r => r.emoji === emoji).length || 0,
     reacted: ann.reactions?.some(r => r.emoji === emoji && r.employee_id === currentEmployee?.id),
+    reactors: ann.reactions?.filter(r => r.emoji === emoji).map(r => r.employee?.full_name || 'Someone') || [],
   }))
 
   async function handleReaction(emoji) {
@@ -172,18 +202,85 @@ function AnnouncementCard({ ann, currentEmployee, isHR, onUpdate }) {
 
         {/* Reactions */}
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-          {reactionCounts.map(({ emoji, count, reacted }) => (
-            <button key={emoji} onClick={() => handleReaction(emoji)} style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '5px 12px', borderRadius: 20,
-              border: `1.5px solid ${reacted ? C.brand : C.border}`,
-              background: reacted ? C.brandLight : C.surface,
-              fontSize: 14, cursor: 'pointer', transition: 'all 0.15s',
-            }}>
-              <span>{emoji}</span>
-              {count > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: reacted ? C.brand : C.textMid }}>{count}</span>}
-            </button>
+          {reactionCounts.map(({ emoji, count, reacted, reactors }) => (
+            <div key={emoji} style={{ position: 'relative' }}>
+              <button
+                onClick={() => handleReaction(emoji)}
+                onMouseEnter={() => setHoveredReaction(emoji)}
+                onMouseLeave={() => setHoveredReaction(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '5px 12px', borderRadius: 20,
+                  border: `1.5px solid ${reacted ? C.brand : C.border}`,
+                  background: reacted ? C.brandLight : C.surface,
+                  fontSize: 14, cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                <span>{emoji}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: reacted ? C.brand : C.textMid }}>{count}</span>
+              </button>
+              {hoveredReaction === emoji && reactors.length > 0 && (
+                <div style={{
+                  position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
+                  background: '#1e1e2e', color: '#fff', borderRadius: 8,
+                  padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap',
+                  zIndex: 200, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                  maxWidth: 220, pointerEvents: 'none',
+                }}>
+                  {reactors.slice(0, 5).join(', ')}
+                  {reactors.length > 5 && ` +${reactors.length - 5} more`}
+                </div>
+              )}
+            </div>
           ))}
+
+          {/* Emoji picker */}
+          <div style={{ position: 'relative' }} ref={pickerRef}>
+            <button
+              onClick={() => setShowPicker(p => !p)}
+              style={{
+                padding: '5px 10px', borderRadius: 20,
+                border: `1.5px solid ${C.border}`, background: C.surface,
+                fontSize: 15, cursor: 'pointer', color: C.textLight, lineHeight: 1,
+              }}
+            >＋</button>
+            {showPicker && (
+              <div style={{
+                position: 'absolute', bottom: 'calc(100% + 6px)', left: 0,
+                background: C.surface, border: `1px solid ${C.border}`,
+                borderRadius: 14, padding: 10, zIndex: 200,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 2,
+              }}>
+                {EMOJI_PICKER_SET.map(e => {
+                  const alreadyPicked = ann.reactions?.some(r => r.emoji === e && r.employee_id === currentEmployee?.id)
+                  return (
+                    <button key={e} onClick={() => { handleReaction(e); setShowPicker(false) }} style={{
+                      padding: 6, borderRadius: 8, fontSize: 18, cursor: 'pointer',
+                      border: `1.5px solid ${alreadyPicked ? C.brand : 'transparent'}`,
+                      background: alreadyPicked ? C.brandLight : 'transparent',
+                      transition: 'background 0.1s',
+                    }}>{e}</button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Employee: acknowledge button */}
+          {!isHR && (
+            hasAcknowledged
+              ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: '1.5px solid #00b89440', background: '#00b89412', fontSize: 12, fontWeight: 600, color: '#00b894' }}>✓ Acknowledged</span>
+              : <button onClick={handleAcknowledge} disabled={acking} style={{
+                  display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20,
+                  border: `1.5px solid ${C.border}`, background: C.surface,
+                  fontSize: 12, fontWeight: 600, color: C.textMid,
+                  cursor: acking ? 'not-allowed' : 'pointer', fontFamily: FONTS.body,
+                }}>
+                  {acking ? '…' : '✓ Acknowledge'}
+                </button>
+          )}
+
           <button onClick={() => setShowComments(!showComments)} style={{
             marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
             background: 'none', border: 'none', cursor: 'pointer',
@@ -192,6 +289,53 @@ function AnnouncementCard({ ann, currentEmployee, isHR, onUpdate }) {
             💬 {ann.comments?.length || 0} comment{ann.comments?.length !== 1 ? 's' : ''}
           </button>
         </div>
+
+        {/* HR: acknowledgement tracker */}
+        {isHR && (
+          <div style={{ marginTop: 10 }}>
+            <button onClick={() => setShowAcks(!showAcks)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+              cursor: 'pointer', fontSize: 12, fontFamily: FONTS.body, padding: 0,
+              color: ackCount > 0 ? '#00b894' : C.textLight,
+            }}>
+              ✓ {ackCount} / {allEmployees?.length || '?'} acknowledged {showAcks ? '▴' : '▾'}
+            </button>
+            {showAcks && (
+              <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                {ackCount > 0 && (
+                  <div style={{ marginBottom: notAcknowledged.length > 0 ? 12 : 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#00b894', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      ✓ Acknowledged ({ackCount})
+                    </div>
+                    {ann.acknowledgements.map(a => (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                        <Avatar initials={a.employee?.avatar_initials || '??'} size={22} />
+                        <span style={{ fontSize: 12, color: C.text }}>{a.employee?.full_name}</span>
+                        <span style={{ fontSize: 10, color: C.textLight, marginLeft: 'auto' }}>{timeAgo(a.acknowledged_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {notAcknowledged.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.amber, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      ⏳ Pending ({notAcknowledged.length})
+                    </div>
+                    {notAcknowledged.map(e => (
+                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                        <Avatar initials={e.avatar_initials || '??'} size={22} />
+                        <span style={{ fontSize: 12, color: C.textMid }}>{e.full_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {ackCount === 0 && notAcknowledged.length === 0 && (
+                  <div style={{ fontSize: 12, color: C.textLight }}>No active employees to track.</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Comments */}
         {showComments && (
@@ -247,6 +391,7 @@ function AnnouncementCard({ ann, currentEmployee, isHR, onUpdate }) {
 export default function AnnouncementsPage() {
   const { employee, isHR } = useAuth()
   const [announcements, setAnnouncements] = useState([])
+  const [allEmployees,  setAllEmployees]  = useState([])
   const [loading,       setLoading]       = useState(true)
   const [showForm,      setShowForm]      = useState(false)
   const [filter,        setFilter]        = useState('all')
@@ -260,12 +405,20 @@ export default function AnnouncementsPage() {
 
   useEffect(() => { load() }, [])
 
+  // Fetch all active employees so HR can see who hasn't acknowledged
+  useEffect(() => {
+    if (!isHR) return
+    supabase.from('employees').select('id, full_name, avatar_initials').eq('status', 'active')
+      .then(({ data }) => setAllEmployees(data || []))
+  }, [isHR])
+
   // Realtime subscription
   useEffect(() => {
     const sub = supabase.channel('announcements-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcement_reactions' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcement_comments' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcement_acknowledgements' }, load)
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [])
@@ -318,6 +471,7 @@ export default function AnnouncementsPage() {
               currentEmployee={employee}
               isHR={isHR}
               onUpdate={load}
+              allEmployees={allEmployees}
             />
           ))
         )}

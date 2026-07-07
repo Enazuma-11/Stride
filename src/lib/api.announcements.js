@@ -7,16 +7,31 @@ export async function getAnnouncements() {
     .select(`
       *,
       posted_by:posted_by(id, full_name, avatar_initials, role, profile_photo_url),
-      reactions:announcement_reactions(id, emoji, employee_id),
+      reactions:announcement_reactions(id, emoji, employee_id, employee:employee_id(full_name, avatar_initials)),
       comments:announcement_comments(
         id, body, created_at,
         employee:employee_id(id, full_name, avatar_initials, profile_photo_url)
+      ),
+      acknowledgements:announcement_acknowledgements(
+        id, employee_id, acknowledged_at,
+        employee:employee_id(full_name, avatar_initials)
       )
     `)
     .order('pinned', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
+}
+
+// ── Acknowledge an announcement (employee, one-way) ───────────────────────────
+export async function acknowledgeAnnouncement(announcementId, employeeId) {
+  const { error } = await supabase
+    .from('announcement_acknowledgements')
+    .upsert(
+      { announcement_id: announcementId, employee_id: employeeId },
+      { onConflict: 'announcement_id,employee_id' }
+    )
+  if (error) throw error
 }
 
 // ── Create announcement ───────────────────────────────────────────────────────
