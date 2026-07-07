@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../../components/layout/AppShell'
 import { Card, SectionTitle, Avatar, Tag, Badge, Spinner, EmptyState } from '../../components/ui'
-import { C, LEAVE_TYPES, FEMALE_ONLY_LEAVES, ATTENDANCE_STATUSES } from '../../lib/constants'
+import { C, FONTS, LEAVE_TYPES, FEMALE_ONLY_LEAVES, ATTENDANCE_STATUSES } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { useResponsive, cols } from '../../lib/responsive'
 import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getUpcomingApprovedLeaves } from '../../lib/api'
 import { getTodayAttendance, getHolidays, todayISO, getWeeklyHours, getWeekStart } from '../../lib/api.attendance'
 import { getMyUnregularizedSessions, getMyExpiringCertifications } from '../../lib/api.dashboard'
+import { getManagerPendingReviews, managerSubmitReview } from '../../lib/api.probation'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getTimeOfDay() {
@@ -110,6 +111,169 @@ function BalanceCard({ lt, balance }) {
   )
 }
 
+// ── Probation review panel (managers only) ────────────────────────────────────
+const REVIEW_CHOICES = [
+  {
+    value:   'confirm',
+    icon:    '✅',
+    label:   'Confirm',
+    sub:     'Employee joins as a permanent team member',
+    color:   '#00b894',
+    bg:      '#e8faf0',
+    border:  '#00b89450',
+  },
+  {
+    value:   'extend',
+    icon:    '📅',
+    label:   'Extend',
+    sub:     'Review continues for a custom duration',
+    color:   C.amber,
+    bg:      C.amberSoft,
+    border:  C.amber + '50',
+  },
+  {
+    value:   'relieve',
+    icon:    '🔴',
+    label:   'Relieve',
+    sub:     'Offboarding process begins',
+    color:   '#ef4444',
+    bg:      '#fef2f2',
+    border:  '#ef444440',
+  },
+]
+
+function ProbationReviewPanel({ reviews, managerId, onRefresh }) {
+  const [activeReview,    setActiveReview]    = useState(reviews[0]?.id || null)
+  const [recommendation,  setRecommendation]  = useState('')
+  const [notes,           setNotes]           = useState('')
+  const [extensionDays,   setExtensionDays]   = useState('')
+  const [saving,          setSaving]          = useState(false)
+  const [error,           setError]           = useState('')
+  const [successId,       setSuccessId]       = useState(null)
+
+  const review = reviews.find(r => r.id === activeReview) || reviews[0]
+  if (!review) return null
+
+  const emp           = review.employee
+  const end           = new Date(emp?.probation_end_date)
+  const remaining     = Math.max(0, Math.round((end - new Date()) / 86400000))
+  const isUrgent      = remaining <= 14
+  const alreadyDone   = review.status === 'pending_hr'
+  const canExtend     = !emp?.probation_extended
+
+  async function handleSubmit() {
+    setError('')
+    if (!recommendation) { setError('Please select a recommendation.'); return }
+    if (!notes.trim())    { setError('Notes are required.'); return }
+    if (recommendation === 'extend' && !extensionDays) { setError('Enter extension duration.'); return }
+    setSaving(true)
+    try {
+      await managerSubmitReview(review.id, { recommendation, notes, extensionDays: Number(extensionDays) }, managerId)
+      setSuccessId(review.id)
+      onRefresh()
+    } catch (e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: C.surface, borderRadius: 16, border: `1.5px solid ${isUrgent ? C.amber + '60' : C.border}`, padding: '20px 24px', marginBottom: 24, boxShadow: C.shadow }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 4 }}>
+        📋 Probation Reviews
+      </div>
+      <div style={{ fontSize: 12, color: C.textLight, marginBottom: 16 }}>
+        {reviews.length} direct report{reviews.length !== 1 ? 's' : ''} awaiting review
+      </div>
+
+      {/* Employee selector if multiple */}
+      {reviews.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {reviews.map(rv => (
+            <button key={rv.id} onClick={() => { setActiveReview(rv.id); setRecommendation(''); setNotes(''); setExtensionDays(''); setError('') }}
+              style={{
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                border: `1.5px solid ${rv.id === activeReview ? C.brand : C.border}`,
+                background: rv.id === activeReview ? C.brandLight : C.surface,
+                color: rv.id === activeReview ? C.brand : C.textMid,
+              }}>
+              {rv.employee?.full_name?.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Employee info strip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: C.bg, borderRadius: 10, marginBottom: 16 }}>
+        <Avatar initials={emp?.avatar_initials || '??'} size={36} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{emp?.full_name}</div>
+          <div style={{ fontSize: 11, color: C.textLight }}>{emp?.department}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: isUrgent ? C.amber : C.textMid }}>{remaining}d remaining</div>
+          <div style={{ fontSize: 10, color: C.textLight }}>{end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+        </div>
+      </div>
+
+      {/* Already submitted state */}
+      {alreadyDone || successId === review.id ? (
+        <div style={{ padding: '16px', background: '#e8faf0', borderRadius: 12, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#00b894', marginBottom: 4 }}>✓ Review Submitted</div>
+          <div style={{ fontSize: 12, color: C.textMid }}>Awaiting HR decision</div>
+        </div>
+      ) : (
+        <>
+          {/* Choice cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+            {REVIEW_CHOICES.map(c => {
+              const disabled = c.value === 'extend' && !canExtend
+              const selected = recommendation === c.value
+              return (
+                <button key={c.value} onClick={() => !disabled && setRecommendation(c.value)} style={{
+                  padding: '14px 10px', borderRadius: 12, cursor: disabled ? 'not-allowed' : 'pointer',
+                  border: `2px solid ${selected ? c.color : disabled ? C.border : C.border}`,
+                  background: selected ? c.bg : disabled ? C.bg : C.surface,
+                  opacity: disabled ? 0.5 : 1, textAlign: 'center', transition: 'all 0.15s',
+                }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: selected ? c.color : C.text }}>{c.label}</div>
+                  <div style={{ fontSize: 10, color: C.textLight, marginTop: 3, lineHeight: 1.4 }}>
+                    {disabled ? 'Extension already used' : c.sub}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Extension days input */}
+          {recommendation === 'extend' && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>Extension duration (days)</label>
+              <input type="number" min="1" value={extensionDays} onChange={e => setExtensionDays(e.target.value)}
+                placeholder="e.g. 90"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '8px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none' }} />
+            </div>
+          )}
+
+          {/* Notes */}
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+            placeholder="Add your notes for HR (required)…"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', resize: 'vertical', marginBottom: 12 }} />
+
+          {error && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 10 }}>{error}</div>}
+
+          <button onClick={handleSubmit} disabled={saving || !recommendation} style={{
+            width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: saving || !recommendation ? 'not-allowed' : 'pointer',
+            background: saving || !recommendation ? C.border : C.brand, color: '#fff',
+            fontSize: 13, fontWeight: 700, fontFamily: FONTS.display,
+          }}>
+            {saving ? 'Submitting…' : 'Submit Review →'}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function EmployeeLandingPage() {
   const { employee }  = useAuth()
@@ -126,6 +290,7 @@ export default function EmployeeLandingPage() {
   const [upcomingLeaves, setUpcomingLeaves] = useState([])
   const [unregularized,  setUnregularized]  = useState([])
   const [expiringCerts,  setExpiringCerts]  = useState([])
+  const [probationReviews, setProbationReviews] = useState([])
   const [loading,        setLoading]        = useState(true)
   const [loadError,      setLoadError]      = useState(null)
 
@@ -144,7 +309,8 @@ export default function EmployeeLandingPage() {
       safe('getUpcomingApprovedLeaves', getUpcomingApprovedLeaves(),                        []),
       safe('getMyUnregularizedSessions',getMyUnregularizedSessions(employee.id),            []),
       safe('getMyExpiringCertifications',getMyExpiringCertifications(employee.id),          []),
-    ]).then(([bal, req, ann, att, hols, wk, upcoming, unreg, certs]) => {
+      safe('getManagerPendingReviews',   getManagerPendingReviews(employee.id),             []),
+    ]).then(([bal, req, ann, att, hols, wk, upcoming, unreg, certs, probReviews]) => {
       setBalances(bal)
       setMyRequests(req)
       setAnnouncements(ann)
@@ -154,6 +320,7 @@ export default function EmployeeLandingPage() {
       setUpcomingLeaves(upcoming)
       setUnregularized(unreg)
       setExpiringCerts(certs)
+      setProbationReviews(probReviews)
     }).finally(() => setLoading(false))
   }, [employee])
 
@@ -239,6 +406,15 @@ export default function EmployeeLandingPage() {
             <div style={{ height: '100%', width: `${Math.min(100, Math.round((weekly.totalHours / weekly.targetHours) * 100))}%`, background: C.brand, borderRadius: 6, transition: 'width 0.3s' }} />
           </div>
         </Card>
+      )}
+
+      {/* Probation reviews (managers only) */}
+      {probationReviews.length > 0 && (
+        <ProbationReviewPanel
+          reviews={probationReviews}
+          managerId={employee.id}
+          onRefresh={() => getManagerPendingReviews(employee.id).then(setProbationReviews)}
+        />
       )}
 
       {/* ── Layer 2: Smart Prompts ── */}
