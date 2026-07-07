@@ -94,6 +94,7 @@ export const MAX_SESSIONS_PER_DAY = 5
 
 export const EMPLOYEE_TYPES = [
   { value: 'permanent',  label: 'Permanent Employee' },
+  { value: 'probation',  label: 'Probation'          },
   { value: 'intern',     label: 'Intern'             },
   { value: 'contractor', label: 'Contractor'         },
   { value: 'parttime',   label: 'Part-time'          },
