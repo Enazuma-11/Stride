@@ -181,7 +181,7 @@ export async function getPendingHRTransferRequests() {
   const { data, error } = await supabase
     .from('manager_transfer_requests')
     .select('*, employee:employee_id(full_name, avatar_initials), from_manager:from_manager_id(full_name), to_manager:to_manager_id(full_name)')
-    .eq('status', 'pending_hr')
+    .in('status', ['pending_hr', 'pending_target'])
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []

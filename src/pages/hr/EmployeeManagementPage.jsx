@@ -800,9 +800,9 @@ export default function EmployeeManagementPage() {
 
       {tab === 'transfers' && (
         <Card style={{ padding: '20px 24px' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "'Sora',sans-serif", marginBottom: 14 }}>Transfer Requests Awaiting Approval</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "'Sora',sans-serif", marginBottom: 14 }}>Transfer Requests</div>
           {transferRequests.length === 0 ? (
-            <EmptyState icon="🔁" title="Nothing pending" subtitle="Transfer requests accepted by the receiving manager will show up here." />
+            <EmptyState icon="🔁" title="Nothing pending" subtitle="Transfer requests will appear here." />
           ) : transferRequests.map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
               <Avatar initials={r.employee?.avatar_initials || '??'} size={32} />
@@ -810,8 +810,14 @@ export default function EmployeeManagementPage() {
                 <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.employee?.full_name}</div>
                 <div style={{ fontSize: 11, color: C.textLight }}>{r.from_manager?.full_name} → {r.to_manager?.full_name}{r.reason ? ` — "${r.reason}"` : ''}</div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => handleTransferDecision(r.id, 'rejected')}>Reject</Button>
-              <Button size="sm" onClick={() => handleTransferDecision(r.id, 'approved')}>Approve</Button>
+              {r.status === 'pending_target' ? (
+                <span style={{ fontSize: 11, color: C.amber, fontWeight: 600, padding: '4px 10px', background: C.amberSoft, borderRadius: 20 }}>Awaiting receiving manager</span>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => handleTransferDecision(r.id, 'rejected')}>Reject</Button>
+                  <Button size="sm" onClick={() => handleTransferDecision(r.id, 'approved')}>Approve</Button>
+                </>
+              )}
             </div>
           ))}
         </Card>
