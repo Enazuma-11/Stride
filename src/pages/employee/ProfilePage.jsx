@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import EmployeeICard from '../../components/EmployeeICard'
 import { TwoFactorSetup } from '../../components/TwoFactorAuth'
 import AppShell from '../../components/layout/AppShell'
@@ -904,9 +905,10 @@ function ProfileHeader({ employee, isHR, onPhotoUpload }) {
 export default function ProfilePage() {
   const r = useResponsive()
   const { employee: me, isHR, refetchEmployee } = useAuth()
+  const [searchParams] = useSearchParams()
   const [profile,  setProfile]  = useState(null)
   const [loading,  setLoading]  = useState(true)
-  const [tab,      setTab]      = useState('personal')
+  const [tab,      setTab]      = useState(searchParams.get('tab') || 'personal')
 
   const load = useCallback(async () => {
     if (!me) return

@@ -55,7 +55,7 @@ function buildSmartPrompts({ unregularized, myRequests, expiringCerts, employee,
       key:       `cert-${c.id}`,
       dot:       d <= 7 ? C.accent : C.amber,
       message:   `Your ${c.title} expires in ${d} day${d !== 1 ? 's' : ''}`,
-      link:      '/profile',
+      link:      '/profile?tab=skills',
       linkLabel: 'View →',
     })
   })
