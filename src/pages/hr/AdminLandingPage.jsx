@@ -176,16 +176,18 @@ export default function AdminLandingPage() {
   const [loadError,       setLoadError]       = useState(null)
 
   useEffect(() => {
+    const safe = (label, promise, fallback) =>
+      promise.catch(err => { console.error(`[HR Dashboard] ${label} failed:`, err); return fallback })
     Promise.all([
-      getAllLeaveRequests(),
-      getEmployeesForHRDashboard(),
-      getTeamAttendanceByDate(todayISO()),
-      getHolidays(year),
-      getAnnouncements(),
-      getPendingRegularizationsForHR(),
-      getPendingTransfersForHR(),
-      getExpiringCertificationsForHR(),
-      getProbationEndingSoon(),
+      safe('getAllLeaveRequests',          getAllLeaveRequests(),                    []),
+      safe('getEmployeesForHRDashboard',   getEmployeesForHRDashboard(),            []),
+      safe('getTeamAttendanceByDate',      getTeamAttendanceByDate(todayISO()),     []),
+      safe('getHolidays',                  getHolidays(year),                       []),
+      safe('getAnnouncements',             getAnnouncements(),                      []),
+      safe('getPendingRegularizationsForHR', getPendingRegularizationsForHR(),      []),
+      safe('getPendingTransfersForHR',     getPendingTransfersForHR(),              []),
+      safe('getExpiringCertificationsForHR', getExpiringCertificationsForHR(),      []),
+      safe('getProbationEndingSoon',       getProbationEndingSoon(),                []),
     ]).then(([lv, emps, att, hols, ann, regs, transfers, certs, probation]) => {
       setLeaves(lv)
       setEmployees(emps)
@@ -196,9 +198,6 @@ export default function AdminLandingPage() {
       setPendingTransfers(transfers)
       setExpiringCerts(certs)
       setProbationEnding(probation)
-    }).catch(err => {
-      console.error('HR dashboard load failed:', err)
-      setLoadError(err.message || 'Failed to load dashboard data.')
     }).finally(() => setLoading(false))
   }, [])
 

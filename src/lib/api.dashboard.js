@@ -4,16 +4,16 @@ import { todayISO, addDaysISO } from './api.attendance'
 export async function getPendingRegularizationsForHR() {
   const { data, error } = await supabase
     .from('attendance_regularization_requests')
-    .select('id, employee_id, status, created_at, employee:employee_id(full_name)')
+    .select('id, employee_id, status, submitted_at, employee:employee_id(full_name)')
     .in('status', ['pending_admin', 'pending_manager'])
-    .order('created_at', { ascending: true })
+    .order('submitted_at', { ascending: true })
   if (error) throw error
   return (data || []).map(r => ({
     id: r.id,
     employee_id: r.employee_id,
     full_name: r.employee?.full_name || 'Unknown',
     status: r.status,
-    created_at: r.created_at,
+    created_at: r.submitted_at,
   }))
 }
 
