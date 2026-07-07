@@ -84,6 +84,13 @@ export async function selfRegister({ fullName, email, password, employeeType, de
 
 // ── HR approves a self-registered employee ────────────────────────────────────
 export async function approveEmployee(employeeId, { role, roleType, employeeType, department, managerId, joinDate, internshipEndDate }) {
+  let probationEndDate = null
+  if (employeeType === 'probation' && joinDate) {
+    const d = new Date(joinDate)
+    d.setMonth(d.getMonth() + 6)
+    probationEndDate = d.toISOString().split('T')[0]
+  }
+
   const { data, error } = await supabase
     .from('employees')
     .update({
@@ -96,6 +103,7 @@ export async function approveEmployee(employeeId, { role, roleType, employeeType
       manager_id:          managerId || null,
       join_date:           joinDate,
       internship_end_date: employeeType === 'intern' ? internshipEndDate : null,
+      probation_end_date:  probationEndDate,
     })
     .eq('id', employeeId)
     .select()
