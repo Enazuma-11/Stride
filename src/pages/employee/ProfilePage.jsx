@@ -19,6 +19,7 @@ import {
   uploadDocument, deleteDocument,
   uploadProfilePhoto,
 } from '../../lib/api.profile'
+import { getMyProbationStatus } from '../../lib/api.probation'
 
 const SECTION_TABS = [
   { id: 'personal',   label: '👤 Personal',    free: true  },
@@ -901,6 +902,91 @@ function ProfileHeader({ employee, isHR, onPhotoUpload }) {
   )
 }
 
+// ── PROBATION STATUS CARD ─────────────────────────────────────────────────────
+function ProbationStatusCard({ employeeId }) {
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    getMyProbationStatus(employeeId).then(setData).catch(() => {})
+  }, [employeeId])
+
+  if (!data) return null
+  const { employee: emp, review } = data
+
+  const isOnProbation = emp?.employee_type === 'probation'
+  const isDecided     = review?.status === 'decided'
+  if (!isOnProbation && !isDecided) return null
+
+  // Decided outcome card
+  if (isDecided) {
+    const outcomes = {
+      confirmed: { bg: '#e8faf0', border: '#00b89440', icon: '🎉', color: '#00b894', title: 'Confirmed as Permanent', sub: 'You\'ve completed probation and are now a permanent team member.' },
+      extended:  { bg: '#fffbeb', border: `${C.amber}40`, icon: '📅', color: C.amber, title: 'Probation Extended', sub: `Extended by ${review.hr_extension_days} days. New end date: ${new Date(emp?.probation_end_date || '').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.` },
+      relieved:  { bg: C.bg,     border: C.border,       icon: '📋', color: C.textMid, title: 'Probation Period Ended', sub: 'Please check with HR for further information.' },
+    }
+    const o = outcomes[review.hr_decision] || outcomes.relieved
+    return (
+      <div style={{ background: o.bg, border: `1.5px solid ${o.border}`, borderRadius: 16, padding: '20px 24px', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 28 }}>{o.icon}</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: o.color, fontFamily: FONTS.display }}>{o.title}</div>
+            <div style={{ fontSize: 13, color: C.textMid, marginTop: 4 }}>{o.sub}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Active probation — compute progress
+  const end       = new Date(emp.probation_end_date)
+  const start     = new Date(end)
+  start.setMonth(start.getMonth() - 6)
+  const today     = new Date()
+  const totalDays = Math.max(1, Math.round((end - start) / 86400000))
+  const elapsed   = Math.max(0, Math.round((today - start) / 86400000))
+  const remaining = Math.max(0, Math.round((end - today) / 86400000))
+  const pct       = Math.min(100, Math.round((elapsed / totalDays) * 100))
+  const isUrgent  = remaining <= 30
+  const barColor  = isUrgent ? C.amber : C.brand
+
+  const statusPill = review?.status === 'pending_hr'
+    ? { label: 'Under Review', color: C.amber, bg: C.amberSoft }
+    : review?.status === 'pending_manager'
+    ? { label: 'Review Pending', color: C.brand, bg: C.brandLight }
+    : { label: 'Active', color: C.green, bg: C.greenSoft }
+
+  return (
+    <div style={{ background: C.surface, border: `1.5px solid ${isUrgent ? C.amber + '60' : C.border}`, borderRadius: 16, padding: '20px 24px', marginBottom: 24, boxShadow: isUrgent ? `0 0 0 3px ${C.amber}18` : C.shadow }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: FONTS.display }}>📋 Probation Period</div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: statusPill.color, background: statusPill.bg, padding: '3px 10px', borderRadius: 20 }}>
+          {statusPill.label}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 8, background: C.border, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 8, transition: 'width 0.6s ease' }} />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.textLight }}>
+        <span>{elapsed} days elapsed</span>
+        <span style={{ color: isUrgent ? C.amber : C.textLight, fontWeight: isUrgent ? 700 : 400 }}>
+          {remaining} days remaining
+        </span>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: C.textMid }}>
+        Probation ends on{' '}
+        <strong style={{ color: isUrgent ? C.amber : C.text }}>
+          {end.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </strong>
+      </div>
+    </div>
+  )
+}
+
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const r = useResponsive()
@@ -979,6 +1065,8 @@ export default function ProfilePage() {
   return (
     <AppShell title="My Profile" subtitle="Manage your personal and professional information">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap'); @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <ProbationStatusCard employeeId={employee.id} />
 
       <ProfileHeader employee={employee} isHR={isHR} onPhotoUpload={handlePhotoUpload} />
 
