@@ -152,3 +152,46 @@ export const HOLIDAYS_2026 = [
   { date: '2026-11-25', name: 'Id-E-Milad',               type: 'optional'  },
   { date: '2026-12-25', name: 'Christmas',                type: 'optional'  },
 ]
+
+// ── Performance / Annual Goals ────────────────────────────────────────────────
+export const VERDICTS = [
+  { value: 'exceeds',          label: 'Exceeds Expectations',   color: '#0d9488', bg: '#ccfbf1' },
+  { value: 'meets',            label: 'Meets Expectations',     color: '#00b894', bg: '#e8faf0' },
+  { value: 'partially_meets',  label: 'Partially Meets',        color: '#f59e0b', bg: '#fef3c7' },
+  { value: 'doesnt_meet',      label: 'Does Not Meet',          color: '#ef4444', bg: '#fef2f2' },
+]
+
+export function getVerdict(value) {
+  return VERDICTS.find(v => v.value === value) || null
+}
+
+// Returns { open: bool, reason: string, closesOn: Date|null }
+export function getGoalWindowState(employee, now = new Date()) {
+  const year = now.getFullYear()
+  const open  = new Date(year, 0, 25)   // Jan 25
+  const close = new Date(year, 1, 15, 23, 59, 59) // Feb 15
+  if (now >= open && now <= close) {
+    return { open: true, reason: 'annual', closesOn: close }
+  }
+  if (employee?.join_date) {
+    const deadline = new Date(employee.join_date)
+    deadline.setDate(deadline.getDate() + 15)
+    deadline.setHours(23, 59, 59)
+    if (now <= deadline) {
+      return { open: true, reason: 'newhire', closesOn: deadline }
+    }
+  }
+  return { open: false, reason: 'closed', closesOn: null }
+}
+
+// Returns 'h1' | 'year_end' | null for the review window active today
+export function getReviewWindow(now = new Date()) {
+  const year = now.getFullYear()
+  const h1Open  = new Date(year, 6, 1)   // Jul 1
+  const h1Close = new Date(year, 6, 15, 23, 59, 59) // Jul 15
+  const yeOpen  = new Date(year, 11, 15) // Dec 15
+  const yeClose = new Date(year, 11, 31, 23, 59, 59) // Dec 31
+  if (now >= h1Open && now <= h1Close) return 'h1'
+  if (now >= yeOpen && now <= yeClose) return 'year_end'
+  return null
+}
