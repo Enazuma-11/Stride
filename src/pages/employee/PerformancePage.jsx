@@ -8,6 +8,8 @@ import {
   createKeyResult, updateKeyResult, deleteKeyResult, addCheckin, getCheckins,
   getStatusColor, getStatusLabel, QUARTERS,
 } from '../../lib/api.okrs'
+import { getAnnualCycle, getMyGoalSet, saveGoalDraft, submitGoalSet, getMyReviews } from '../../lib/api.performance'
+import { getGoalWindowState, getVerdict } from '../../lib/constants'
 
 const METRIC_TYPES = [
   { value: 'percentage', label: '% Percentage', unit: '%' },
@@ -276,6 +278,215 @@ function ObjectiveCard({ obj, currentEmployeeId, isHR, onUpdate, onDelete }) {
   )
 }
 
+const PTS_TARGET = 100
+
+function PointsMeter({ sum }) {
+  const pct = Math.min(100, Math.round((sum / PTS_TARGET) * 100))
+  const exact = sum === PTS_TARGET
+  const over = sum > PTS_TARGET
+  const color = exact ? C.green : over ? '#ef4444' : C.brand
+  const label = exact ? 'Perfect — 100 / 100' : over ? `${sum} / 100 · ${sum - 100} over` : `${sum} / 100 · ${100 - sum} to go`
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.textMid }}>Points</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color }}>{label}</span>
+      </div>
+      <div style={{ height: 12, background: C.border, borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 8, transition: 'width 0.4s ease, background 0.3s' }} />
+      </div>
+    </div>
+  )
+}
+
+function YearTracker({ submission, reviews }) {
+  const hasApproved = submission?.status === 'approved'
+  const h1Done      = reviews.some(r => r.review_type === 'h1')
+  const yeDone      = reviews.some(r => r.review_type === 'year_end' && r.status === 'manager_done')
+  const finalized   = reviews.some(r => r.review_type === 'year_end' && r.status === 'hr_finalized')
+  const steps = [
+    { label: 'Goals Set', done: hasApproved },
+    { label: 'H1 Review', done: h1Done },
+    { label: 'Year-End',  done: yeDone || finalized },
+    { label: 'Finalized', done: finalized },
+  ]
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 18 }}>
+      {steps.map((s, i) => (
+        <div key={s.label} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: s.done ? C.green : C.border,
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>
+              {s.done ? '✓' : i + 1}
+            </div>
+            <span style={{ fontSize: 9, color: s.done ? C.green : C.textLight, fontWeight: 600, whiteSpace: 'nowrap' }}>{s.label}</span>
+          </div>
+          {i < steps.length - 1 && <div style={{ flex: 1, height: 2, background: s.done ? C.green : C.border, margin: '0 4px 14px' }} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AnnualGoalsSection({ employee }) {
+  const [cycle,      setCycle]      = useState(null)
+  const [submission, setSubmission] = useState(null)
+  const [goals,      setGoals]      = useState([])
+  const [reviews,    setReviews]    = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [saving,     setSaving]     = useState(false)
+  const [error,      setError]      = useState('')
+
+  const windowState = getGoalWindowState(employee)
+  const locked = submission?.status === 'approved' || submission?.status === 'submitted'
+  const editable = !locked && (windowState.open || submission?.status === 'returned')
+
+  async function load() {
+    setLoading(true)
+    try {
+      const c = await getAnnualCycle()
+      setCycle(c)
+      if (c) {
+        const { submission: sub, goals: g } = await getMyGoalSet(c.id, employee.id)
+        setSubmission(sub)
+        setGoals(g.length ? g : [emptyGoal(), emptyGoal(), emptyGoal(), emptyGoal(), emptyGoal()])
+        setReviews(await getMyReviews(c.id))
+      }
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  function emptyGoal() { return { title: '', description: '', points: '' } }
+  const sum = goals.reduce((s, g) => s + (parseInt(g.points) || 0), 0)
+
+  function updateGoal(i, patch) { setGoals(gs => gs.map((g, idx) => idx === i ? { ...g, ...patch } : g)) }
+  function addGoal() { if (goals.length < 8) setGoals(gs => [...gs, emptyGoal()]) }
+  function removeGoal(i) { if (goals.length > 5) setGoals(gs => gs.filter((_, idx) => idx !== i)) }
+
+  async function handleSaveDraft() {
+    setSaving(true); setError('')
+    try {
+      const payload = goals.filter(g => g.title.trim()).map(g => ({ id: g.id, title: g.title.trim(), description: g.description, points: parseInt(g.points) || 0 }))
+      await saveGoalDraft(cycle.id, employee.id, payload)
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+
+  async function handleSubmit() {
+    setSaving(true); setError('')
+    try {
+      const payload = goals.filter(g => g.title.trim()).map(g => ({ id: g.id, title: g.title.trim(), description: g.description, points: parseInt(g.points) || 0 }))
+      await saveGoalDraft(cycle.id, employee.id, payload)
+      await submitGoalSet(cycle.id, employee.id)
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+
+  if (loading) return null
+  if (!cycle) return null
+
+  const statusBanner = {
+    submitted: { text: 'Submitted — awaiting manager approval', color: C.brand, bg: C.brandLight },
+    approved:  { text: '✓ Approved for the year', color: C.green, bg: C.greenSoft },
+    returned:  { text: '↩️ Returned by manager — please revise and resubmit', color: C.amber, bg: C.amberSoft },
+  }[submission?.status]
+
+  return (
+    <div style={{ background: C.surface, borderRadius: 16, border: `1.5px solid ${C.border}`, padding: '20px 24px', marginBottom: 24, boxShadow: C.shadow }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.text, fontFamily: FONTS.display }}>🎯 {cycle.year} Performance Goals</div>
+        {windowState.open && !locked && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.brand, background: C.brandLight, padding: '3px 10px', borderRadius: 20 }}>
+            Window open · closes {windowState.closesOn?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+          </span>
+        )}
+      </div>
+
+      <YearTracker submission={submission} reviews={reviews} />
+
+      {statusBanner && (
+        <div style={{ padding: '10px 14px', background: statusBanner.bg, borderRadius: 10, marginBottom: 16, fontSize: 13, fontWeight: 600, color: statusBanner.color }}>
+          {statusBanner.text}
+          {submission?.status === 'returned' && submission?.manager_comment && (
+            <div style={{ fontSize: 12, fontWeight: 400, color: C.textMid, marginTop: 6 }}>"{submission.manager_comment}"</div>
+          )}
+        </div>
+      )}
+
+      {/* Reviews (read-only feedback) */}
+      {reviews.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          {['h1', 'year_end'].map(rt => {
+            const rows = reviews.filter(r => r.review_type === rt)
+            if (!rows.length) return null
+            const first = rows[0]
+            const verdict = first.verdict ? getVerdict(first.verdict) : null
+            return (
+              <div key={rt} style={{ background: C.bg, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{rt === 'h1' ? '📊 Half-Year Review' : '🏁 Year-End Review'}</span>
+                  {verdict && <span style={{ fontSize: 11, fontWeight: 700, color: verdict.color, background: verdict.bg, padding: '2px 10px', borderRadius: 20 }}>{verdict.label}</span>}
+                </div>
+                {first.overall_comment && <div style={{ fontSize: 12, color: C.textMid, marginBottom: 8, fontStyle: 'italic' }}>{first.overall_comment}</div>}
+                {rows.filter(r => r.goal_comment).map(r => (
+                  <div key={r.objective_id} style={{ fontSize: 12, color: C.textMid, padding: '4px 0', borderTop: `1px solid ${C.border}` }}>
+                    <strong style={{ color: C.text }}>{r.goal_title}:</strong> {r.goal_comment}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Goal editor OR read-only cards */}
+      {editable ? (
+        <>
+          {goals.map((g, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 40px', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+              <div>
+                <input value={g.title} onChange={e => updateGoal(i, { title: e.target.value })} placeholder={`Goal ${i + 1} title`}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', marginBottom: 4 }} />
+                <input value={g.description} onChange={e => updateGoal(i, { description: e.target.value })} placeholder="Description (optional)"
+                  style={{ width: '100%', padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: FONTS.body, outline: 'none', color: C.textMid }} />
+              </div>
+              <input type="number" min="1" max="100" value={g.points} onChange={e => updateGoal(i, { points: e.target.value })} placeholder="pts"
+                style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: FONTS.body, outline: 'none', textAlign: 'center' }} />
+              <button onClick={() => removeGoal(i)} disabled={goals.length <= 5}
+                style={{ background: 'none', border: 'none', fontSize: 16, cursor: goals.length <= 5 ? 'not-allowed' : 'pointer', color: goals.length <= 5 ? C.border : '#ef444470', paddingTop: 6 }}>×</button>
+            </div>
+          ))}
+
+          {goals.length < 8 && (
+            <button onClick={addGoal} style={{ fontSize: 12, color: C.brand, background: 'none', border: `1px dashed ${C.brand}`, borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontWeight: 600, marginBottom: 14 }}>
+              + Add Goal ({goals.length}/8)
+            </button>
+          )}
+
+          <PointsMeter sum={sum} />
+          {error && <Alert type="error" message={error} />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button onClick={handleSubmit} disabled={saving || sum !== 100 || goals.filter(g => g.title.trim()).length < 5}>
+              {saving ? 'Saving…' : 'Submit for Approval →'}
+            </Button>
+            <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>Save Draft</Button>
+          </div>
+        </>
+      ) : (
+        goals.filter(g => g.title).map((g, i) => (
+          <div key={g.id || i} style={{ display: 'flex', gap: 12, padding: '12px 14px', background: C.bg, borderRadius: 10, marginBottom: 8, alignItems: 'center' }}>
+            <div style={{ minWidth: 44, height: 44, borderRadius: 10, background: C.brandLight, color: C.brand, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, fontFamily: FONTS.display }}>{g.points}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{g.title}</div>
+              {g.description && <div style={{ fontSize: 11, color: C.textLight }}>{g.description}</div>}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function PerformancePage() {
   const { employee, isHR } = useAuth()
@@ -337,6 +548,8 @@ export default function PerformancePage() {
 
   return (
     <AppShell title="Performance & OKRs" subtitle="Objectives and Key Results">
+      {employee && <AnnualGoalsSection employee={employee} />}
+
       {/* Cycle selector */}
       {cycles.length > 1 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
