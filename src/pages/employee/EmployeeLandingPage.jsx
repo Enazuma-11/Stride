@@ -9,6 +9,8 @@ import { getMyLeaveBalances, getMyLeaveRequests, getAnnouncements, getUpcomingAp
 import { getTodayAttendance, getHolidays, todayISO, getWeeklyHours, getWeekStart } from '../../lib/api.attendance'
 import { getMyUnregularizedSessions, getMyExpiringCertifications } from '../../lib/api.dashboard'
 import { getManagerPendingReviews, managerSubmitReview } from '../../lib/api.probation'
+import { getAnnualCycle, getManagerGoalApprovals, approveGoalSet, returnGoalSet, getManagerReviewTargets, saveReview } from '../../lib/api.performance'
+import { getReviewWindow, VERDICTS } from '../../lib/constants'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getTimeOfDay() {
@@ -274,6 +276,181 @@ function ProbationReviewPanel({ reviews, managerId, onRefresh }) {
   )
 }
 
+function GoalApprovalCard({ sub, onApprove, onReturn }) {
+  const [returning, setReturning] = useState(false)
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const sum = (sub.goals || []).reduce((s, g) => s + (g.points || 0), 0)
+
+  async function act(fn) {
+    setBusy(true); setErr('')
+    try { await fn() } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  return (
+    <div style={{ background: C.bg, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <Avatar initials={sub.employee?.avatar_initials || '??'} size={30} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{sub.employee?.full_name}</div>
+          <div style={{ fontSize: 11, color: C.textLight }}>{sub.employee?.department} · {sub.goals?.length} goals · {sum} pts</div>
+        </div>
+      </div>
+      {(sub.goals || []).map(g => (
+        <div key={g.id} style={{ display: 'flex', gap: 10, fontSize: 12, color: C.textMid, padding: '4px 0', borderTop: `1px solid ${C.border}` }}>
+          <span style={{ fontWeight: 800, color: C.brand, minWidth: 34 }}>{g.points}</span>
+          <span>{g.title}</span>
+        </div>
+      ))}
+      {returning ? (
+        <div style={{ marginTop: 10 }}>
+          <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="What should change? (required)"
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: FONTS.body, outline: 'none', resize: 'vertical', marginBottom: 8 }} />
+          {err && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => act(async () => { await onReturn(sub.id, comment); })} disabled={busy}
+              style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: C.amber, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Send Back</button>
+            <button onClick={() => { setReturning(false); setErr('') }} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'none', fontSize: 12, cursor: 'pointer', color: C.textLight }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={() => act(async () => { await onApprove(sub.id); })} disabled={busy}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#00b894', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✓ Approve</button>
+          <button onClick={() => setReturning(true)} disabled={busy}
+            style={{ padding: '7px 16px', borderRadius: 8, border: `1.5px solid ${C.amber}`, background: 'none', color: C.amber, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>↩ Return</button>
+        </div>
+      )}
+      {err && !returning && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 8 }}>{err}</div>}
+    </div>
+  )
+}
+
+function ReviewCard({ target, reviewType, cycleId, managerId, onDone }) {
+  const existing = target.reviews.find(r => r.review_type === reviewType)
+  const [open, setOpen] = useState(false)
+  const [ratings, setRatings] = useState(() => target.goals.map(g => {
+    const rt = existing?.ratings?.find(x => x.objective_id === g.id)
+    return { objectiveId: g.id, title: g.title, points: g.points, score: rt?.score ?? '', comment: rt?.comment ?? '' }
+  }))
+  const [overall, setOverall] = useState(existing?.overall_comment || '')
+  const [verdict, setVerdict] = useState(existing?.verdict || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const done = existing?.status === 'manager_done' || existing?.status === 'hr_finalized'
+
+  async function submit() {
+    setErr('')
+    if (reviewType === 'year_end' && !verdict) { setErr('Select a verdict.'); return }
+    setBusy(true)
+    try {
+      await saveReview({
+        reviewId: existing?.id, cycleId, employeeId: target.employee.id, reviewType,
+        ratings: ratings.map(r => ({ objectiveId: r.objectiveId, score: r.score === '' ? null : parseFloat(r.score), comment: r.comment })),
+        overallComment: overall, verdict: reviewType === 'year_end' ? verdict : undefined,
+      }, managerId)
+      onDone()
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  return (
+    <div style={{ background: C.bg, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+      <div onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+        <Avatar initials={target.employee?.avatar_initials || '??'} size={30} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{target.employee?.full_name}</div>
+          <div style={{ fontSize: 11, color: C.textLight }}>{target.goals.length} goals</div>
+        </div>
+        {done ? <span style={{ fontSize: 11, fontWeight: 700, color: '#00b894' }}>✓ Submitted</span>
+              : <span style={{ fontSize: 11, color: C.brand }}>{open ? '▲' : 'Review ▾'}</span>}
+      </div>
+
+      {open && !done && (
+        <div style={{ marginTop: 12 }}>
+          {ratings.map((r, i) => (
+            <div key={r.objectiveId} style={{ padding: '8px 0', borderTop: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}><span style={{ color: C.brand }}>{r.points}pts</span> · {r.title}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 8 }}>
+                <input type="number" min="0" max="100" value={r.score} placeholder="score" onChange={e => setRatings(rs => rs.map((x, idx) => idx === i ? { ...x, score: e.target.value } : x))}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: FONTS.body, outline: 'none', textAlign: 'center' }} />
+                <input value={r.comment} placeholder="Comment (visible to employee)" onChange={e => setRatings(rs => rs.map((x, idx) => idx === i ? { ...x, comment: e.target.value } : x))}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: FONTS.body, outline: 'none' }} />
+              </div>
+            </div>
+          ))}
+          <textarea value={overall} onChange={e => setOverall(e.target.value)} rows={2} placeholder="Overall comment (visible to employee)"
+            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: FONTS.body, outline: 'none', resize: 'vertical', margin: '10px 0' }} />
+          {reviewType === 'year_end' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6, marginBottom: 10 }}>
+              {VERDICTS.map(v => (
+                <button key={v.value} onClick={() => setVerdict(v.value)} style={{
+                  padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  border: `2px solid ${verdict === v.value ? v.color : C.border}`,
+                  background: verdict === v.value ? v.bg : C.surface, color: verdict === v.value ? v.color : C.textMid,
+                }}>{v.label}</button>
+              ))}
+            </div>
+          )}
+          {err && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{err}</div>}
+          <button onClick={submit} disabled={busy}
+            style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: busy ? C.border : C.brand, color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: FONTS.display }}>
+            {busy ? 'Saving…' : 'Submit Review →'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PerformanceManagerPanel({ managerId }) {
+  const [cycle, setCycle] = useState(null)
+  const [approvals, setApprovals] = useState([])
+  const [targets, setTargets] = useState([])
+  const reviewWindow = getReviewWindow()
+
+  async function load() {
+    const c = await getAnnualCycle()
+    setCycle(c)
+    if (!c) return
+    setApprovals(await getManagerGoalApprovals(managerId, c.id))
+    if (reviewWindow) setTargets(await getManagerReviewTargets(managerId, c.id))
+  }
+  useEffect(() => { load() }, [])
+
+  if (!cycle) return null
+  const showReviews = reviewWindow && targets.length > 0
+  if (approvals.length === 0 && !showReviews) return null
+
+  return (
+    <div style={{ background: C.surface, borderRadius: 16, border: `1.5px solid ${C.border}`, padding: '20px 24px', marginBottom: 24, boxShadow: C.shadow }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: FONTS.display, marginBottom: 16 }}>📋 Performance — Team Actions</div>
+
+      {approvals.length > 0 && (
+        <div style={{ marginBottom: showReviews ? 20 : 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>Goal Approvals ({approvals.length})</div>
+          {approvals.map(sub => (
+            <GoalApprovalCard key={sub.id} sub={sub}
+              onApprove={async (id) => { await approveGoalSet(id, managerId); await load() }}
+              onReturn={async (id, comment) => { await returnGoalSet(id, comment, managerId); await load() }} />
+          ))}
+        </div>
+      )}
+
+      {showReviews && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>
+            {reviewWindow === 'h1' ? 'H1 Reviews' : 'Year-End Reviews'} ({targets.length})
+          </div>
+          {targets.map(t => (
+            <ReviewCard key={t.employee.id} target={t} reviewType={reviewWindow} cycleId={cycle.id} managerId={managerId} onDone={load} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function EmployeeLandingPage() {
   const { employee }  = useAuth()
@@ -416,6 +593,8 @@ export default function EmployeeLandingPage() {
           onRefresh={() => getManagerPendingReviews(employee.id).then(setProbationReviews)}
         />
       )}
+
+      {employee && <PerformanceManagerPanel managerId={employee.id} />}
 
       {/* ── Layer 2: Smart Prompts ── */}
       <div style={{ marginBottom: 28 }}>
