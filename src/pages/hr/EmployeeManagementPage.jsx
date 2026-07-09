@@ -15,6 +15,8 @@ import {
 } from '../../lib/api.onboarding'
 import { getPendingHRTransferRequests, hrDecideTransfer } from '../../lib/api.managerTransfers'
 import { getPendingReviews, getProbationEmployees, hrDecideReview } from '../../lib/api.probation'
+import { getAnnualCycle, getPerformanceOverview, finalizeReview } from '../../lib/api.performance'
+import { getVerdict } from '../../lib/constants'
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 function OnboardBadge({ status }) {
@@ -673,6 +675,12 @@ export default function EmployeeManagementPage() {
   const [decisionError,     setDecisionError]     = useState('')
   const [decisionSaving,    setDecisionSaving]    = useState(false)
   const [decisionSuccess,   setDecisionSuccess]   = useState('')
+  const [perfCycle,     setPerfCycle]     = useState(null)
+  const [perfOverview,  setPerfOverview]  = useState([])
+  const [finalizingId,  setFinalizingId]  = useState(null)
+  const [hrNotesDraft,  setHrNotesDraft]  = useState('')
+  const [perfBusy,      setPerfBusy]      = useState(false)
+  const [perfError,     setPerfError]     = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -696,7 +704,14 @@ export default function EmployeeManagementPage() {
         .order('hr_decided_at', { ascending: false })
         .limit(50)
       setProbationDecided(decided || [])
+      const pc = await getAnnualCycle()
+      setPerfCycle(pc)
+      if (pc) setPerfOverview(await getPerformanceOverview(pc.id))
     } finally { setLoading(false) }
+  }
+
+  async function reloadPerf() {
+    if (perfCycle) setPerfOverview(await getPerformanceOverview(perfCycle.id))
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
@@ -783,6 +798,15 @@ export default function EmployeeManagementPage() {
     finally { setDecisionSaving(false) }
   }
 
+  async function handleFinalize(reviewId) {
+    setPerfBusy(true); setPerfError('')
+    try {
+      await finalizeReview(reviewId, hrNotesDraft, currentEmployee?.id)
+      setFinalizingId(null); setHrNotesDraft('')
+      await reloadPerf()
+    } catch (e) { setPerfError(e.message) } finally { setPerfBusy(false) }
+  }
+
   if (loading) return (
     <AppShell title="Employee Management">
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}><Spinner size={36} /></div>
@@ -808,6 +832,9 @@ export default function EmployeeManagementPage() {
           { id: 'employees',  label: 'Employees' },
           { id: 'transfers',  label: `🔁 Transfer Requests${transferRequests.length ? ` (${transferRequests.length})` : ''}` },
           { id: 'probation',  label: `📋 Probation${probationPending.length ? ` (${probationPending.length})` : ''}` },
+          { id: 'performance', label: `📈 Performance${
+              perfOverview.filter(p => p.yearEnd?.status === 'manager_done').length
+                ? ` (${perfOverview.filter(p => p.yearEnd?.status === 'manager_done').length})` : ''}` },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -1046,6 +1073,79 @@ export default function EmployeeManagementPage() {
                 )
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'performance' && (
+        <div>
+          {!perfCycle ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: C.textLight }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📈</div>
+              <div style={{ fontWeight: 600 }}>No active annual cycle</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: FONTS.display, marginBottom: 14 }}>
+                {perfCycle.year} Performance Overview
+              </div>
+              {perfError && <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: 10, color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{perfError}</div>}
+
+              {perfOverview.map(row => {
+                const subStatus = row.submission?.status || 'not_started'
+                const subBadge = {
+                  not_started: { label: 'No goals',    color: C.textLight, bg: C.bg },
+                  draft:       { label: 'Draft',        color: C.textMid,   bg: C.bg },
+                  submitted:   { label: 'Submitted',    color: C.brand,     bg: C.brandLight },
+                  returned:    { label: 'Returned',     color: C.amber,     bg: C.amberSoft },
+                  approved:    { label: 'Approved',     color: C.green,     bg: C.greenSoft },
+                }[subStatus]
+                const ye = row.yearEnd
+                const verdict = ye?.verdict ? getVerdict(ye.verdict) : null
+                const canFinalize = ye?.status === 'manager_done'
+                const isFinalizing = finalizingId === ye?.id
+
+                return (
+                  <div key={row.employee.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <Avatar initials={row.employee.avatar_initials || '??'} size={30} />
+                      <div style={{ flex: 1, minWidth: 160 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{row.employee.full_name}</div>
+                        <div style={{ fontSize: 11, color: C.textLight }}>{row.employee.department}</div>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: subBadge.color, background: subBadge.bg, padding: '3px 10px', borderRadius: 20 }}>Goals: {subBadge.label}</span>
+                      <span style={{ fontSize: 11, color: C.textLight }}>H1: {row.h1 ? '✓' : '—'}</span>
+                      {verdict
+                        ? <span style={{ fontSize: 11, fontWeight: 700, color: verdict.color, background: verdict.bg, padding: '3px 10px', borderRadius: 20 }}>{verdict.label}{ye.status === 'hr_finalized' ? ' ✓' : ''}</span>
+                        : <span style={{ fontSize: 11, color: C.textLight }}>Year-end: —</span>}
+                      {canFinalize && (
+                        <button onClick={() => { setFinalizingId(isFinalizing ? null : ye.id); setHrNotesDraft(''); setPerfError('') }}
+                          style={{ padding: '6px 12px', borderRadius: 8, border: `1.5px solid ${C.brand}`, background: isFinalizing ? C.brandLight : C.surface, color: C.brand, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                          {isFinalizing ? 'Cancel' : 'Finalize →'}
+                        </button>
+                      )}
+                    </div>
+
+                    {isFinalizing && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                        {ye.overall_comment && <div style={{ fontSize: 12, color: C.textMid, marginBottom: 8, fontStyle: 'italic' }}>Manager: “{ye.overall_comment}”</div>}
+                        {(ye.ratings || []).map(rt => (
+                          <div key={rt.objective_id} style={{ fontSize: 12, color: C.textMid, padding: '3px 0' }}>
+                            Score: <strong style={{ color: C.text }}>{rt.score ?? '—'}</strong>{rt.comment ? ` · ${rt.comment}` : ''}
+                          </div>
+                        ))}
+                        <textarea value={hrNotesDraft} onChange={e => setHrNotesDraft(e.target.value)} rows={2} placeholder="HR notes (internal, optional)"
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: FONTS.body, outline: 'none', resize: 'vertical', margin: '8px 0' }} />
+                        <button onClick={() => handleFinalize(ye.id)} disabled={perfBusy}
+                          style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: perfBusy ? C.border : C.brand, color: '#fff', fontSize: 13, fontWeight: 700, cursor: perfBusy ? 'not-allowed' : 'pointer', fontFamily: FONTS.display }}>
+                          {perfBusy ? 'Finalizing…' : 'Confirm & Finalize →'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
           )}
         </div>
       )}
