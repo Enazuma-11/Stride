@@ -103,8 +103,9 @@ describe('WORK_HOURS_BY_TYPE', () => {
 })
 
 describe('EMPLOYEE_TYPES', () => {
-  it('has 4 types', () => {
-    expect(EMPLOYEE_TYPES).toHaveLength(4)
+  it('has 5 types including probation', () => {
+    expect(EMPLOYEE_TYPES).toHaveLength(5)
+    expect(EMPLOYEE_TYPES.map(t => t.value)).toContain('probation')
   })
 
   it('each type has value and label', () => {

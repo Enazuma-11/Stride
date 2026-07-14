@@ -26,9 +26,9 @@ describe('getPendingRegularizationsForHR', () => {
   it('returns mapped records', async () => {
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
-        in: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({
-            data: [{ id: 'r1', employee_id: 'emp-1', status: 'pending_admin', created_at: '2026-07-01T09:00:00Z', employee: { full_name: 'Priya Sharma' } }],
+            data: [{ id: 'r1', employee_id: 'emp-1', status: 'pending_admin', submitted_at: '2026-07-01T09:00:00Z', employee: { full_name: 'Priya Sharma' } }],
             error: null,
           }),
         }),
@@ -42,7 +42,7 @@ describe('getPendingRegularizationsForHR', () => {
   it('returns empty array when data is null', async () => {
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
-        in: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: null, error: null }),
         }),
       }),
@@ -53,7 +53,7 @@ describe('getPendingRegularizationsForHR', () => {
   it('throws on Supabase error', async () => {
     supabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
-        in: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
         }),
       }),

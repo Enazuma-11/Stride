@@ -264,18 +264,18 @@ describe('targetDecideTransfer', () => {
 // ── getPendingHRTransferRequests ──────────────────────────────────────────────
 describe('getPendingHRTransferRequests', () => {
   it('queries by pending_hr status', async () => {
-    const eqMock = vi.fn().mockReturnThis()
+    const inMock = vi.fn().mockReturnThis()
     const orderMock = vi.fn().mockResolvedValue({ data: [{ id: 'req-1' }], error: null })
     supabase.from.mockReturnValueOnce({
       select: vi.fn().mockReturnThis(),
-      eq: eqMock,
+      in: inMock,
       order: orderMock,
     })
 
     const result = await getPendingHRTransferRequests()
     expect(result).toEqual([{ id: 'req-1' }])
-    expect(eqMock).toHaveBeenCalledWith('status', 'pending_hr')
-    expect(eqMock).toHaveBeenCalledTimes(1)
+    expect(inMock).toHaveBeenCalledWith('status', ['pending_hr', 'pending_target'])
+    expect(inMock).toHaveBeenCalledTimes(1)
   })
 })
 
