@@ -203,26 +203,18 @@ export async function updateLeaveStatus(leaveId, status, reviewedBy) {
   if (status === 'approved') {
     const leave = data
     const year = new Date(leave.from_date).getFullYear()
-    const { data: bal } = await supabase
-      .from('leave_balances')
-      .select('id, used_days')
-      .eq('employee_id', leave.employee_id)
-      .eq('leave_type', leave.leave_type)
-      .eq('year', year)
-      .maybeSingle()
-
-    if (bal) {
-      // Use paid_days, not the full day-count — an unpaid request has
-      // paid_days === 0, so approving it must be a genuine no-op on
-      // used_days (symmetric with cancelLeave's reversal, which already
-      // reverses by paid_days, not days).
-      const newUsed = Number(bal.used_days || 0) + Number(leave.paid_days || 0)
-      const { error: balErr } = await supabase
-        .from('leave_balances')
-        .update({ used_days: newUsed })
-        .eq('id', bal.id)
-      if (balErr) console.error('Balance update error:', balErr.message)
-    }
+    // Atomic increment (avoids the read-modify-write lost-update race of two
+    // concurrent approvals). Use paid_days, not the full day-count — an unpaid
+    // request has paid_days === 0, so approving it is a no-op on used_days
+    // (symmetric with cancelLeave's reversal, which reverses by paid_days).
+    const { error: balErr } = await supabase.rpc('apply_leave_balance_delta', {
+      p_employee_id:  leave.employee_id,
+      p_leave_type:   leave.leave_type,
+      p_year:         year,
+      p_used_delta:   Number(leave.paid_days || 0),
+      p_unpaid_delta: 0,
+    })
+    if (balErr) console.error('Balance update error:', balErr.message)
 
     // Team-wide visibility — name + dates only, no leave type or reason.
     try {
@@ -266,18 +258,16 @@ export async function cancelLeave(leaveId, employeeId) {
   // same request.
   if (leave.status === 'approved') {
     const year = new Date(leave.from_date).getFullYear()
-    const { data: bal } = await supabase
-      .from('leave_balances')
-      .select('id, used_days, unpaid_days_taken')
-      .eq('employee_id', leave.employee_id)
-      .eq('leave_type', leave.leave_type)
-      .eq('year', year)
-      .maybeSingle()
-    if (bal) {
-      const restoredUsed   = Math.max(0, (bal.used_days || 0) - Number(leave.paid_days || 0))
-      const restoredUnpaid = Math.max(0, (bal.unpaid_days_taken || 0) - Number(leave.unpaid_days || 0))
-      await supabase.from('leave_balances').update({ used_days: restoredUsed, unpaid_days_taken: restoredUnpaid }).eq('id', bal.id)
-    }
+    // Atomic reversal (the RPC clamps at 0, matching the prior Math.max(0,…)).
+    const { error: balErr } = await supabase.rpc('apply_leave_balance_delta', {
+      p_employee_id:  leave.employee_id,
+      p_leave_type:   leave.leave_type,
+      p_year:         year,
+      // `|| 0` normalizes -0 (from negating 0) to a clean 0.
+      p_used_delta:   -Number(leave.paid_days || 0) || 0,
+      p_unpaid_delta: -Number(leave.unpaid_days || 0) || 0,
+    })
+    if (balErr) console.error('Balance reversal error:', balErr.message)
   }
 
   const { error } = await supabase.from('leave_requests').delete().eq('id', leaveId)

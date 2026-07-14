@@ -372,11 +372,16 @@ describe('updateLeaveStatus', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
+    supabase.rpc.mockResolvedValue({ error: null })
     await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
 
-    // used_days should simply be incremented by the request's day-count —
-    // no paid/unpaid split calculation should run here anymore.
-    expect(balUpdatePayload).toEqual({ used_days: 3 })
+    // Balance is now adjusted atomically via the RPC — used_days is incremented
+    // by paid_days (1), not read-then-written.
+    void balUpdatePayload
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_leave_balance_delta', {
+      p_employee_id: 'emp-1', p_leave_type: 'casual_sick', p_year: 2026,
+      p_used_delta: 1, p_unpaid_delta: 0,
+    })
   })
 
   it('on approval of an unpaid request (paid_days: 0), used_days is left unchanged — approval is a genuine no-op on balance', async () => {
@@ -406,12 +411,16 @@ describe('updateLeaveStatus', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
+    supabase.rpc.mockResolvedValue({ error: null })
     await updateLeaveStatus('leave-1', 'approved', 'reviewer-1')
 
-    // paid_days is 0 for an all-unpaid request, so used_days must stay
-    // exactly where it started (2), not be incremented by the full
-    // day-count (which would incorrectly deduct unpaid leave from balance).
-    expect(balUpdatePayload).toEqual({ used_days: 2 })
+    // paid_days is 0 for an all-unpaid request, so the atomic adjustment
+    // increments used_days by 0 — approval is a genuine no-op on balance.
+    void balUpdatePayload
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_leave_balance_delta', {
+      p_employee_id: 'emp-1', p_leave_type: 'casual_sick', p_year: 2026,
+      p_used_delta: 0, p_unpaid_delta: 0,
+    })
   })
 
   it('does not write to leave_requests.paid_days/unpaid_days on approval (that was already decided at apply time)', async () => {
@@ -546,12 +555,16 @@ describe('cancelLeave', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
+    supabase.rpc.mockResolvedValue({ error: null })
     await cancelLeave('leave-1', 'emp-1')
 
-    // used_days must be unaffected (this leave never touched it), and
-    // unpaid_days_taken must drop back to 0.
-    expect(balUpdatePayload.used_days).toBe(5)
-    expect(balUpdatePayload.unpaid_days_taken).toBe(0)
+    // Reversal is atomic: used_days is untouched (paid_days 0 → delta 0) and
+    // unpaid_days_taken is reduced by unpaid_days (2).
+    void balUpdatePayload
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_leave_balance_delta', {
+      p_employee_id: 'emp-1', p_leave_type: 'casual_sick', p_year: 2026,
+      p_used_delta: 0, p_unpaid_delta: -2,
+    })
   })
 
   it('when cancelling an approved leave that had paid_days > 0, reverses used_days as before (unaffected by the unpaid-reversal logic)', async () => {
@@ -581,10 +594,15 @@ describe('cancelLeave', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
+    supabase.rpc.mockResolvedValue({ error: null })
     await cancelLeave('leave-1', 'emp-1')
 
-    expect(balUpdatePayload.used_days).toBe(3) // 5 - 2
-    expect(balUpdatePayload.unpaid_days_taken).toBe(0) // unchanged, was already 0
+    // used_days reversed by paid_days (2); unpaid_days_taken unchanged (delta 0).
+    void balUpdatePayload
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_leave_balance_delta', {
+      p_employee_id: 'emp-1', p_leave_type: 'casual_sick', p_year: 2026,
+      p_used_delta: -2, p_unpaid_delta: 0,
+    })
   })
 })
 
