@@ -133,16 +133,20 @@ export async function getManagerGoalApprovals(managerId, cycleId) {
     .eq('status', 'submitted')
     .order('submitted_at', { ascending: true })
   if (error) throw error
+  if (!data?.length) return []
 
-  // attach goals
-  for (const sub of data) {
-    const { data: goals } = await supabase
-      .from('objectives').select('id, title, description, points')
-      .eq('cycle_id', cycleId).eq('employee_id', sub.employee_id)
-      .order('created_at', { ascending: true })
-    sub.goals = goals || []
+  // Attach goals — fetch all in one query, then group by employee (avoids N+1).
+  const submittedIds = data.map(s => s.employee_id)
+  const { data: allGoals } = await supabase
+    .from('objectives').select('id, title, description, points, employee_id')
+    .eq('cycle_id', cycleId).in('employee_id', submittedIds)
+    .order('created_at', { ascending: true })
+  const goalsByEmployee = {}
+  for (const g of allGoals || []) {
+    ;(goalsByEmployee[g.employee_id] ||= []).push({ id: g.id, title: g.title, description: g.description, points: g.points })
   }
-  return data || []
+  for (const sub of data) sub.goals = goalsByEmployee[sub.employee_id] || []
+  return data
 }
 
 export async function approveGoalSet(submissionId, managerId) {
@@ -198,19 +202,28 @@ export async function getManagerReviewTargets(managerId, cycleId) {
   const approvedIds = (approved || []).map(a => a.employee_id)
   if (!approvedIds.length) return []
 
-  const targets = []
-  for (const emp of (reports || []).filter(r => approvedIds.includes(r.id))) {
-    const { data: goals } = await supabase
-      .from('objectives').select('id, title, description, points')
-      .eq('cycle_id', cycleId).eq('employee_id', emp.id)
-      .order('created_at', { ascending: true })
-    const { data: reviews } = await supabase
-      .from('performance_reviews')
-      .select('*, ratings:performance_review_ratings(objective_id, score, comment)')
-      .eq('cycle_id', cycleId).eq('employee_id', emp.id)
-    targets.push({ employee: emp, goals: goals || [], reviews: reviews || [] })
+  // Batch goals + reviews across all approved reports (avoids N+1), group in JS.
+  const { data: allGoals } = await supabase
+    .from('objectives').select('id, title, description, points, employee_id')
+    .eq('cycle_id', cycleId).in('employee_id', approvedIds)
+    .order('created_at', { ascending: true })
+  const { data: allReviews } = await supabase
+    .from('performance_reviews')
+    .select('*, ratings:performance_review_ratings(objective_id, score, comment)')
+    .eq('cycle_id', cycleId).in('employee_id', approvedIds)
+
+  const goalsByEmployee = {}
+  for (const g of allGoals || []) {
+    ;(goalsByEmployee[g.employee_id] ||= []).push({ id: g.id, title: g.title, description: g.description, points: g.points })
   }
-  return targets
+  const reviewsByEmployee = {}
+  for (const rv of allReviews || []) {
+    ;(reviewsByEmployee[rv.employee_id] ||= []).push(rv)
+  }
+
+  return (reports || [])
+    .filter(r => approvedIds.includes(r.id))
+    .map(emp => ({ employee: emp, goals: goalsByEmployee[emp.id] || [], reviews: reviewsByEmployee[emp.id] || [] }))
 }
 
 // ratings: [{ objectiveId, score, comment }]
