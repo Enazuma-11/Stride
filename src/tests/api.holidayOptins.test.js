@@ -11,6 +11,7 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useRealTimers() // guard against a fake-timer leak from a prior test
 })
 
 describe('getOptinWindow', () => {
@@ -171,6 +172,12 @@ describe('saveMyHolidayOptins', () => {
   })
 
   it('deletes opt-ins for editable holidays not selected, inserts newly selected ones, and records the submission', async () => {
+    // Pin the clock inside an open opt-in window (H2: Jul 1–14) so the
+    // window_label assertion is deterministic regardless of when CI runs.
+    // Fake only Date to avoid interfering with promise resolution.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'))
+
     const editableHolidayIds = ['h1', 'h2', 'h3']
     const selectedHolidayIds = ['h1', 'h3']
     let deletedIds, insertedRows, submissionRow
@@ -210,7 +217,9 @@ describe('saveMyHolidayOptins', () => {
       { employee_id: 'emp-1', holiday_id: 'h3' },
     ])
     expect(submissionRow.employee_id).toBe('emp-1')
-    expect(submissionRow.window_label).toMatch(/^\d{4}-H[12]$/)
+    expect(submissionRow.window_label).toBe('2026-H2')
+
+    vi.useRealTimers()
   })
 
   it('still records a submission row when nothing is selected (confirming zero is a valid response)', async () => {
