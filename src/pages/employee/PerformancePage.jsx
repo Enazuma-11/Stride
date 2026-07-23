@@ -425,7 +425,7 @@ function AnnualGoalsSection({ employee }) {
               <div key={rt} style={{ background: C.bg, borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{rt === 'h1' ? '📊 Half-Year Review' : '🏁 Year-End Review'}</span>
-                  {verdict && <span style={{ fontSize: 11, fontWeight: 700, color: verdict.color, background: verdict.bg, padding: '2px 10px', borderRadius: 20 }}>{verdict.label}</span>}
+                  {verdict && <Badge label={verdict.label} color={verdict.color} bg={verdict.bg} ariaLabel={`Year-end verdict: ${verdict.label}`} />}
                 </div>
                 {first.overall_comment && <div style={{ fontSize: 12, color: C.textMid, marginBottom: 8, fontStyle: 'italic' }}>{first.overall_comment}</div>}
                 {rows.filter(r => r.goal_comment).map(r => (

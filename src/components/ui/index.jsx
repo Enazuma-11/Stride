@@ -50,7 +50,7 @@ export function Avatar({ initials = '??', size = 36, color, src }) {
   )
 }
 
-export function Badge({ status }) {
+export function Badge({ status, label, color, bg, ariaLabel, icon = null }) {
   const map = {
     pending:  { label: 'Pending',  color: '#d97706', bg: '#fef3c7', border: '#fbbf24'  },
     approved: { label: 'Approved', color: '#00b894', bg: 'transparent', border: '#00b894' },
@@ -58,14 +58,20 @@ export function Badge({ status }) {
     active:   { label: 'Active',   color: '#00b894', bg: '#e0fff2',  border: '#00b894' },
     inactive: { label: 'Inactive', color: C.textLight, bg: C.surfaceAlt, border: C.border },
   }
-  const s = map[status] || { label: status, color: C.brand, bg: C.brandLight, border: C.brand }
+  // Allow custom label/color/bg (for verdicts, goals) or fall back to status map
+  const s = (label && color && bg)
+    ? { label, color, bg, border: color }
+    : (map[status] || { label: status, color: C.brand, bg: C.brandLight, border: C.brand })
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20,
-      fontSize: 11, fontWeight: 700, border: `1.5px solid ${s.border}`, fontFamily: FONTS.body,
-    }}>
-      <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.color }} />
+    <span
+      role="status"
+      aria-label={ariaLabel || s.label}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20,
+        fontSize: 11, fontWeight: 700, border: `1.5px solid ${s.border}`, fontFamily: FONTS.body,
+      }}>
+      {icon || <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.color }} />}
       {s.label}
     </span>
   )

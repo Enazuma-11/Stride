@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AppShell from '../../components/layout/AppShell'
-import { Card, Avatar, Button, Spinner, EmptyState } from '../../components/ui'
+import { Card, Avatar, Button, Spinner, EmptyState, Badge } from '../../components/ui'
 import { supabase } from '../../lib/supabase'
 import { C, FONTS } from '../../lib/constants'
 import { useResponsive, cols } from '../../lib/responsive'
@@ -475,10 +475,10 @@ export default function EmployeeManagementPage() {
                         <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{row.employee.full_name}</div>
                         <div style={{ fontSize: 11, color: C.textLight }}>{row.employee.department}</div>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: subBadge.color, background: subBadge.bg, padding: '3px 10px', borderRadius: 20 }}>Goals: {subBadge.label}</span>
+                      <Badge label={`Goals: ${subBadge.label}`} color={subBadge.color} bg={subBadge.bg} ariaLabel={`Goals status: ${subBadge.label}`} />
                       <span style={{ fontSize: 11, color: C.textLight }}>H1: {row.h1 ? '✓' : '—'}</span>
                       {verdict
-                        ? <span style={{ fontSize: 11, fontWeight: 700, color: verdict.color, background: verdict.bg, padding: '3px 10px', borderRadius: 20 }}>{verdict.label}{ye.status === 'hr_finalized' ? ' ✓' : ''}</span>
+                        ? <Badge label={`${verdict.label}${ye.status === 'hr_finalized' ? ' ✓' : ''}`} color={verdict.color} bg={verdict.bg} ariaLabel={`Year-end verdict: ${verdict.label}${ye.status === 'hr_finalized' ? ' (finalized)' : ''}`} />
                         : <span style={{ fontSize: 11, color: C.textLight }}>Year-end: —</span>}
                       {canFinalize && (
                         <button onClick={() => { setFinalizingId(isFinalizing ? null : ye.id); setHrNotesDraft(''); setPerfError('') }}
